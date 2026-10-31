@@ -15,6 +15,11 @@ interface DocumentRepository {
     suspend fun getDocumentById(documentId: String): AppResult<Document>
     suspend fun createDocument(document: Document): AppResult<Document>
     suspend fun updateDocumentStatus(documentId: String, status: DocumentStatus): AppResult<Unit>
+    suspend fun dispatchDocumentForSignature(
+        documentId: String,
+        sentAt: Long,
+        inviteMessage: String
+    ): AppResult<Unit>
     suspend fun deleteDocument(documentId: String): AppResult<Unit>
 
     // Document Signers (N:N Association)

@@ -288,11 +288,10 @@ fun AdminDocumentCard(
     modifier: Modifier = Modifier
 ) {
     val doc = overview.document
-    val formattedDate = DateTimeFormatters.formatTimestamp(doc.createdAt)
     val subtitleText = if (doc.status == DocumentStatus.DRAFT) {
-        "Criado em $formattedDate"
+        "Criado em ${DateTimeFormatters.formatTimestamp(doc.createdAt)}"
     } else {
-        "Enviado em $formattedDate"
+        "Enviado em ${DateTimeFormatters.formatTimestamp(doc.sentAt ?: doc.createdAt)}"
     }
 
     val (chipLabel, chipStyle, progressColor) = when {

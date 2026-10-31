@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,6 +46,7 @@ import com.example.challenge_letssign.ui.components.LetsSignAvatar
 import com.example.challenge_letssign.ui.components.LetsSignPrimaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSecondaryButton
 import com.example.challenge_letssign.ui.components.LetsSignStatusChip
+import com.example.challenge_letssign.ui.components.LetsSignTextField
 import com.example.challenge_letssign.ui.components.LetsSignWizardStepper
 import com.example.challenge_letssign.ui.components.SendPlaneIcon
 import com.example.challenge_letssign.ui.components.ShieldCheckIcon
@@ -54,6 +57,7 @@ import com.example.challenge_letssign.ui.theme.LetsSignColors
 fun DocumentReviewScreen(
     documentId: String,
     onBack: () -> Unit,
+    onPreviewDocumentPdf: (String) -> Unit,
     onDocumentSentSuccess: (String) -> Unit,
     viewModel: DocumentReviewViewModel = hiltViewModel()
 ) {
@@ -73,6 +77,8 @@ fun DocumentReviewScreen(
     DocumentReviewContent(
         uiState = uiState,
         onBack = onBack,
+        onPreviewDocumentPdf = { onPreviewDocumentPdf(documentId) },
+        onInviteMessageChanged = viewModel::onInviteMessageChanged,
         onConfirmSend = viewModel::onSendDocument
     )
 }
@@ -81,6 +87,8 @@ fun DocumentReviewScreen(
 fun DocumentReviewContent(
     uiState: DocumentReviewUiState,
     onBack: () -> Unit,
+    onPreviewDocumentPdf: () -> Unit,
+    onInviteMessageChanged: (String) -> Unit,
     onConfirmSend: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -163,7 +171,7 @@ fun DocumentReviewContent(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Confira o resumo das configurações antes de disparar o documento para os signatários.",
+                text = "Confira o documento final, os signatários, os campos posicionados e a mensagem do convite antes de enviar.",
                 style = MaterialTheme.typography.bodyLarge.copy(
                     color = LetsSignColors.Muted
                 )
@@ -171,47 +179,55 @@ fun DocumentReviewContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Resumo do Documento
+            // 1. Documento Final (Slide 19)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
                 color = LetsSignColors.Mist
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .border(1.25.dp, LetsSignColors.Line, RoundedCornerShape(22.dp))
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(20.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(LetsSignColors.VioletSoft),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        DocumentFileIcon(color = LetsSignColors.Primary, size = 26.dp)
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = uiState.document?.title ?: "Documento PDF",
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${uiState.signers.size} signatário(s) · ${uiState.fields.size} campo(s) posicionado(s)",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = LetsSignColors.Muted
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(LetsSignColors.VioletSoft),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            DocumentFileIcon(color = LetsSignColors.Primary, size = 26.dp)
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = uiState.document?.title ?: "Documento PDF",
+                                style = MaterialTheme.typography.headlineSmall
                             )
-                        )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${uiState.signers.size} signatário(s) · ${uiState.fields.size} campo(s) posicionado(s)",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = LetsSignColors.Muted
+                                )
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LetsSignSecondaryButton(
+                        text = "Ver documento final e posições",
+                        onClick = onPreviewDocumentPdf,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // 2 & 3. Lista de Signatários + Campos e Páginas de Assinatura (Slide 19)
             Text(
                 text = "Signatários e campos atribuídos",
                 style = MaterialTheme.typography.headlineSmall
@@ -278,6 +294,21 @@ fun DocumentReviewContent(
                 }
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 4. Mensagem que acompanhará o convite (Slide 19)
+            LetsSignTextField(
+                label = "Mensagem que acompanhará o convite",
+                value = uiState.inviteMessage,
+                onValueChange = onInviteMessageChanged,
+                placeholder = "Escreva uma mensagem para os signatários...",
+                helperText = "Enviada junto à solicitação de assinatura para cada participante.",
+                singleLine = false,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences
+                )
+            )
+
             Spacer(modifier = Modifier.height(20.dp))
 
             Row(
@@ -291,7 +322,7 @@ fun DocumentReviewContent(
                 ShieldCheckIcon(color = LetsSignColors.Primary, size = 20.dp)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Após o envio, o documento ficará pendente para os signatários e seus campos não poderão mais ser alterados.",
+                    text = "Após o envio, o documento e suas configurações serão preservados e não poderão mais ser alterados.",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = LetsSignColors.VioletDeep,
                         fontSize = 14.sp
@@ -299,6 +330,7 @@ fun DocumentReviewContent(
                 )
             }
 
+            // Em caso de falha, orienta o usuário e permite nova tentativa sem duplicar solicitações (Slide 19)
             if (!uiState.errorMessage.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
@@ -312,13 +344,15 @@ fun DocumentReviewContent(
                     ErrorCircleIcon(color = LetsSignColors.Error, size = 18.dp)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = uiState.errorMessage,
+                        text = "${uiState.errorMessage} Verifique e tente novamente.",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Error
                         )
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

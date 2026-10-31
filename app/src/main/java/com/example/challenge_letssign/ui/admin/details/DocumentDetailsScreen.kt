@@ -57,6 +57,7 @@ import com.example.challenge_letssign.utils.DateTimeFormatters
 fun DocumentDetailsScreen(
     documentId: String,
     onBack: () -> Unit,
+    onEditDraftSignersAndFile: (String) -> Unit = {},
     onOpenPositioningOrViewPdf: (String) -> Unit,
     viewModel: DocumentDetailsViewModel = hiltViewModel()
 ) {
@@ -75,6 +76,7 @@ fun DocumentDetailsScreen(
     DocumentDetailsContent(
         uiState = uiState,
         onBack = onBack,
+        onEditDraftSignersAndFile = { onEditDraftSignersAndFile(documentId) },
         onOpenPositioningOrViewPdf = { onOpenPositioningOrViewPdf(documentId) },
         onDeleteDraft = viewModel::onDeleteDraftDocument
     )
@@ -84,6 +86,7 @@ fun DocumentDetailsScreen(
 fun DocumentDetailsContent(
     uiState: DocumentDetailsUiState,
     onBack: () -> Unit,
+    onEditDraftSignersAndFile: () -> Unit = {},
     onOpenPositioningOrViewPdf: () -> Unit,
     onDeleteDraft: () -> Unit,
     modifier: Modifier = Modifier
@@ -155,12 +158,29 @@ fun DocumentDetailsContent(
                         onClick = onBack,
                         modifier = Modifier.weight(0.4f)
                     )
-                    // Regra 4: Se DRAFT -> Editar campos; Se PENDING/COMPLETED -> Visualizar PDF
-                    LetsSignPrimaryButton(
-                        text = if (uiState.isDraft) "Posicionar e enviar" else "Visualizar PDF",
-                        onClick = onOpenPositioningOrViewPdf,
-                        modifier = Modifier.weight(0.6f)
-                    )
+                    // Regra 4 e Slide 17/19:
+                    // - Se DRAFT: permite editar signatários ou posicionar assinaturas
+                    // - Se COMPLETED: destaca "Ver documento final (PDF)"
+                    // - Se PENDING: "Visualizar PDF"
+                    if (uiState.isDraft) {
+                        LetsSignSecondaryButton(
+                            text = "Signatários",
+                            onClick = onEditDraftSignersAndFile,
+                            modifier = Modifier.weight(0.35f)
+                        )
+                        LetsSignPrimaryButton(
+                            text = "Posicionar",
+                            onClick = onOpenPositioningOrViewPdf,
+                            modifier = Modifier.weight(0.45f)
+                        )
+                    } else {
+                        val isCompleted = doc?.status == DocumentStatus.COMPLETED
+                        LetsSignPrimaryButton(
+                            text = if (isCompleted) "Ver documento final (PDF)" else "Visualizar PDF",
+                            onClick = onOpenPositioningOrViewPdf,
+                            modifier = Modifier.weight(0.6f)
+                        )
+                    }
                 }
             }
         }
@@ -228,9 +248,31 @@ fun DocumentDetailsContent(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "Criado em ${DateTimeFormatters.formatTimestamp(doc.createdAt)}",
+                                    text = if (doc.status == DocumentStatus.DRAFT) {
+                                        "Criado em ${DateTimeFormatters.formatTimestamp(doc.createdAt)}"
+                                    } else {
+                                        "Enviado em ${DateTimeFormatters.formatTimestamp(doc.sentAt ?: doc.createdAt)}"
+                                    },
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         color = LetsSignColors.Muted
+                                    )
+                                )
+                            }
+                        }
+
+                        if (!doc.inviteMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LetsSignColors.Mist)
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = "Mensagem do convite: \"${doc.inviteMessage}\"",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = LetsSignColors.Body
                                     )
                                 )
                             }

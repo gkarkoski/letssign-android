@@ -84,11 +84,16 @@ import com.example.challenge_letssign.ui.theme.LetsSignColors
 @Composable
 fun DocumentPreparationScreen(
     ownerAdminId: String,
+    existingDocumentId: String? = null,
     onCancel: () -> Unit,
     onDraftPrepared: (Document) -> Unit,
     viewModel: DocumentPreparationViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(existingDocumentId) {
+        viewModel.loadExistingDraftIfNeeded(existingDocumentId)
+    }
 
     // ACTION_OPEN_DOCUMENT com mimetype application/pdf conforme Milestone 4
     val pdfPickerLauncher = rememberLauncherForActivityResult(

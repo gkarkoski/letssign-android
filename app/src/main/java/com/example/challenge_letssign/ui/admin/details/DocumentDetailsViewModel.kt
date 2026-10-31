@@ -52,11 +52,13 @@ data class DocumentDetailsUiState(
             )
 
             if (doc.status != DocumentStatus.DRAFT) {
+                val sentTimestamp = doc.sentAt ?: (doc.createdAt + 1000L)
+                val msgPreview = doc.inviteMessage?.takeIf { it.isNotBlank() }?.let { " · Convite: \"$it\"" }.orEmpty()
                 events.add(
                     DocumentAuditEvent(
-                        timestampMillis = doc.createdAt + 1000L,
+                        timestampMillis = sentTimestamp,
                         title = "Enviado para assinatura",
-                        description = "Aguardando assinatura de ${signers.size} signatário(s)."
+                        description = "Solicitação disparada para ${signers.size} signatário(s)$msgPreview"
                     )
                 )
             }

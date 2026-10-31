@@ -69,6 +69,21 @@ class LocalDocumentRepository @Inject constructor(
         }
     }
 
+    override suspend fun dispatchDocumentForSignature(
+        documentId: String,
+        sentAt: Long,
+        inviteMessage: String
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao disparar documento para assinatura.") {
+            documentDao.markDocumentDispatched(
+                documentId = documentId,
+                status = DocumentStatus.PENDING,
+                sentAt = sentAt,
+                inviteMessage = inviteMessage
+            )
+        }
+    }
+
     override suspend fun deleteDocument(documentId: String): AppResult<Unit> =
         withContext(ioDispatcher) {
             runCatchingResult("Erro ao excluir documento.") {

@@ -230,6 +230,21 @@ class LocalDocumentRepositoryTest {
             }
         }
 
+        override suspend fun markDocumentDispatched(
+            documentId: String,
+            status: DocumentStatus,
+            sentAt: Long,
+            inviteMessage: String
+        ) {
+            docsFlow.value = docsFlow.value.map {
+                if (it.id == documentId) {
+                    it.copy(status = status, sentAt = sentAt, inviteMessage = inviteMessage)
+                } else {
+                    it
+                }
+            }
+        }
+
         override suspend fun deleteDocumentById(documentId: String) {
             docsFlow.value = docsFlow.value.filterNot { it.id == documentId }
         }

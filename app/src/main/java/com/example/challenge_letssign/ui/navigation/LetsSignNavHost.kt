@@ -22,7 +22,7 @@ object LetsSignRoutes {
     const val LOGIN = "login"
     const val ADMIN_DASHBOARD = "admin_dashboard/{userId}/{userName}"
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
-    const val DOCUMENT_PREPARATION = "document_preparation/{adminId}"
+    const val DOCUMENT_PREPARATION = "document_preparation/{adminId}?documentId={documentId}"
     const val PDF_POSITIONING = "pdf_positioning/{documentId}"
     const val DOCUMENT_REVIEW = "document_review/{documentId}"
     const val DOCUMENT_DETAILS = "document_details/{documentId}"
@@ -34,8 +34,12 @@ object LetsSignRoutes {
     fun signerDashboard(userId: String, userName: String): String =
         "signer_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
 
-    fun documentPreparation(adminId: String): String =
-        "document_preparation/${encodeSegment(adminId)}"
+    fun documentPreparation(adminId: String, documentId: String? = null): String =
+        if (documentId.isNullOrBlank()) {
+            "document_preparation/${encodeSegment(adminId)}"
+        } else {
+            "document_preparation/${encodeSegment(adminId)}?documentId=${encodeSegment(documentId)}"
+        }
 
     fun pdfPositioning(documentId: String): String =
         "pdf_positioning/${encodeSegment(documentId)}"
@@ -108,13 +112,20 @@ fun LetsSignNavHost(
         composable(
             route = LetsSignRoutes.DOCUMENT_PREPARATION,
             arguments = listOf(
-                navArgument("adminId") { type = NavType.StringType }
+                navArgument("adminId") { type = NavType.StringType },
+                navArgument("documentId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
             )
         ) { backStackEntry ->
             val adminId = backStackEntry.arguments?.getString("adminId").orEmpty()
+            val existingDocId = backStackEntry.arguments?.getString("documentId")
 
             DocumentPreparationScreen(
                 ownerAdminId = adminId,
+                existingDocumentId = existingDocId,
                 onCancel = {
                     navController.popBackStack()
                 },
@@ -156,6 +167,9 @@ fun LetsSignNavHost(
                 onBack = {
                     navController.popBackStack()
                 },
+                onPreviewDocumentPdf = {
+                    navController.popBackStack()
+                },
                 onDocumentSentSuccess = {
                     navController.popBackStack(
                         route = LetsSignRoutes.ADMIN_DASHBOARD,
@@ -177,6 +191,9 @@ fun LetsSignNavHost(
                 documentId = documentId,
                 onBack = {
                     navController.popBackStack()
+                },
+                onEditDraftSignersAndFile = { docId ->
+                    navController.navigate(LetsSignRoutes.documentPreparation("admin", docId))
                 },
                 onOpenPositioningOrViewPdf = { docId ->
                     navController.navigate(LetsSignRoutes.pdfPositioning(docId))

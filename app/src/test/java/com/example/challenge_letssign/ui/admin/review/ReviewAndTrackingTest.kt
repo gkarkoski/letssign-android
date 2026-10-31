@@ -68,13 +68,20 @@ class ReviewAndTrackingTest {
         assertFalse(failSend.isSuccess)
         assertEquals(DocumentStatus.DRAFT, fakeDocRepo.getDocumentById(docId).getOrNull()?.status)
 
-        // Add field for s-2 -> Send must succeed and update status to PENDING
+        // Add field for s-2 -> Send must succeed, update status to PENDING, and save sentAt & inviteMessage
         fakeDocRepo.saveSignatureField(
             SignatureField("f-2", docId, "s-2", 0, 0.2f, 0.5f, 0.3f, 0.08f)
         )
-        val okSend = sendUseCase(docId)
+        val okSend = sendUseCase(
+            documentId = docId,
+            inviteMessage = "Por favor assinem até sexta-feira.",
+            sentAtMillis = 2500L
+        )
         assertTrue(okSend.isSuccess)
-        assertEquals(DocumentStatus.PENDING, fakeDocRepo.getDocumentById(docId).getOrNull()?.status)
+        val dispatchedDoc = fakeDocRepo.getDocumentById(docId).getOrNull()
+        assertEquals(DocumentStatus.PENDING, dispatchedDoc?.status)
+        assertEquals(2500L, dispatchedDoc?.sentAt)
+        assertEquals("Por favor assinem até sexta-feira.", dispatchedDoc?.inviteMessage)
     }
 
     @Test
@@ -119,7 +126,16 @@ class ReviewAndTrackingTest {
 
     @Test
     fun `DocumentDetailsUiState builds chronological audit history for signed and completed documents`() {
-        val doc = Document("d-1", "Contrato", "c.pdf", DocumentStatus.COMPLETED, 1000L, "admin-1")
+        val doc = Document(
+            id = "d-1",
+            title = "Contrato",
+            fileName = "c.pdf",
+            status = DocumentStatus.COMPLETED,
+            createdAt = 1000L,
+            ownerAdminId = "admin-1",
+            sentAt = 2200L,
+            inviteMessage = "Segue contrato para assinatura."
+        )
         val signerUser = User("s-1", "Carlos Silva", "carlos@letssign.com", "11999", "123", UserRole.SIGNER)
         val crossRef = DocumentSigner(
             documentId = "d-1",
@@ -137,9 +153,10 @@ class ReviewAndTrackingTest {
         )
 
         val events = detailsState.auditEvents
-        // Events: Criado, Enviado, Carlos assinou, Documento concluído -> 4 events
+        // Events: Criado (1000), Enviado (2200), Carlos assinou (5000), Documento concluído (5500) -> 4 events
         assertEquals(4, events.size)
         assertEquals("Documento concluído", events.first().title)
+        assertTrue(events.any { it.timestampMillis == 2200L && it.description.contains("Segue contrato para assinatura.") })
         assertTrue(events.any { it.title.contains("Carlos Silva assinou") && it.description.contains("192.168.0.10") })
     }
 
@@ -173,6 +190,25 @@ class ReviewAndTrackingTest {
 
         override suspend fun updateDocumentStatus(documentId: String, status: DocumentStatus): AppResult<Unit> {
             docsFlow.value = docsFlow.value.map { if (it.id == documentId) it.copy(status = status) else it }
+            return AppResult.Success(Unit)
+        }
+
+        override suspend fun dispatchDocumentForSignature(
+            documentId: String,
+            sentAt: Long,
+            inviteMessage: String
+        ): AppResult<Unit> {
+            docsFlow.value = docsFlow.value.map {
+                if (it.id == documentId) {
+                    it.copy(
+                        status = DocumentStatus.PENDING,
+                        sentAt = sentAt,
+                        inviteMessage = inviteMessage
+                    )
+                } else {
+                    it
+                }
+            }
             return AppResult.Success(Unit)
         }
 

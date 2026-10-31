@@ -3,9 +3,11 @@ package com.example.challenge_letssign.ui.admin.preparation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.challenge_letssign.domain.model.Document
+import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.ImportedPdfFile
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.model.User
+import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.usecase.document.ImportPdfUseCase
 import com.example.challenge_letssign.domain.usecase.document.PrepareDraftDocumentUseCase
 import com.example.challenge_letssign.domain.usecase.document.SelectedSignerAssignment
@@ -15,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -71,11 +74,14 @@ data class DocumentPreparationUiState(
 class DocumentPreparationViewModel @Inject constructor(
     observeSignersUseCase: ObserveSignersUseCase,
     private val importPdfUseCase: ImportPdfUseCase,
-    private val prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase
+    private val prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
+    private val documentRepository: DocumentRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentPreparationUiState())
     val uiState: StateFlow<DocumentPreparationUiState> = _uiState.asStateFlow()
+
+    private var loadedDraftId: String? = null
 
     init {
         viewModelScope.launch {
@@ -92,6 +98,44 @@ class DocumentPreparationViewModel @Inject constructor(
                         assignedSigners = updatedAssigned
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Slide 17 (Permitir remover ou substituir assinantes antes de ser enviado):
+     * Carrega um documento DRAFT existente para edição de título, arquivo ou signatários.
+     */
+    fun loadExistingDraftIfNeeded(existingDocumentId: String?) {
+        if (existingDocumentId.isNullOrBlank() || loadedDraftId == existingDocumentId) return
+        loadedDraftId = existingDocumentId
+
+        viewModelScope.launch {
+            val docRes = documentRepository.getDocumentById(existingDocumentId)
+            val doc = docRes.getOrNull() ?: return@launch
+            if (doc.status != DocumentStatus.DRAFT) return@launch
+
+            val signersWithUsers = documentRepository.observeDocumentSigners(existingDocumentId).first()
+            val assignedModels = signersWithUsers.map {
+                AssignedSignerUiModel(
+                    user = it.signer,
+                    roleClass = it.documentSigner.roleClass
+                )
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    currentStep = 2,
+                    documentId = doc.id,
+                    title = doc.title,
+                    pdfStatus = PdfImportStatus.READY,
+                    importedPdf = ImportedPdfFile(
+                        internalFileName = doc.fileName,
+                        originalDisplayName = "${doc.title}.pdf",
+                        pageCount = 1
+                    ),
+                    assignedSigners = assignedModels
+                )
             }
         }
     }

@@ -19,7 +19,7 @@ import com.example.challenge_letssign.data.local.entity.UserEntity
         DocumentSignerCrossRef::class,
         SignatureFieldEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(RoomConverters::class)

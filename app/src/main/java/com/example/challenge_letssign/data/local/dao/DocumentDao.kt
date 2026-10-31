@@ -44,6 +44,20 @@ interface DocumentDao {
     @Query("UPDATE documents SET status = :status WHERE id = :documentId")
     suspend fun updateDocumentStatus(documentId: String, status: DocumentStatus)
 
+    @Query(
+        """
+        UPDATE documents
+        SET status = :status, sentAt = :sentAt, inviteMessage = :inviteMessage
+        WHERE id = :documentId
+        """
+    )
+    suspend fun markDocumentDispatched(
+        documentId: String,
+        status: DocumentStatus,
+        sentAt: Long,
+        inviteMessage: String
+    )
+
     @Query("DELETE FROM documents WHERE id = :documentId")
     suspend fun deleteDocumentById(documentId: String)
 
