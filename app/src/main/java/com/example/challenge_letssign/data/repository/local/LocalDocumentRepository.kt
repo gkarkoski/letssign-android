@@ -1,8 +1,6 @@
 package com.example.challenge_letssign.data.repository.local
 
-import androidx.room.withTransaction
 import com.example.challenge_letssign.data.di.IoDispatcher
-import com.example.challenge_letssign.data.local.LetsSignDatabase
 import com.example.challenge_letssign.data.local.dao.DocumentDao
 import com.example.challenge_letssign.data.local.dao.SignatureFieldDao
 import com.example.challenge_letssign.data.local.entity.toDomain
@@ -12,7 +10,6 @@ import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
-import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.utils.AppResult
 import com.example.challenge_letssign.utils.runCatchingResult
@@ -26,7 +23,6 @@ import javax.inject.Singleton
 
 @Singleton
 class LocalDocumentRepository @Inject constructor(
-    private val database: LetsSignDatabase,
     private val documentDao: DocumentDao,
     private val signatureFieldDao: SignatureFieldDao,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -104,11 +100,8 @@ class LocalDocumentRepository @Inject constructor(
         signerId: String
     ): AppResult<Unit> = withContext(ioDispatcher) {
         runCatchingResult("Erro ao remover signatário do documento.") {
-            database.withTransaction {
-                // Regra 3: Reatividade de Exclusão - Excluir em cascata os SignatureFieldEntity associados
-                signatureFieldDao.deleteSignatureFieldsBySigner(documentId, signerId)
-                documentDao.deleteDocumentSigner(documentId, signerId)
-            }
+            // Regra 3: Reatividade de Exclusão - Excluir em cascata os SignatureFieldEntity associados
+            documentDao.removeSignerWithCascadeFields(documentId, signerId)
         }
     }
 
@@ -119,20 +112,13 @@ class LocalDocumentRepository @Inject constructor(
         signatureIp: String
     ): AppResult<Unit> = withContext(ioDispatcher) {
         runCatchingResult("Erro ao registrar assinatura.") {
-            database.withTransaction {
-                documentDao.updateSignerSignatureStatus(
-                    documentId = documentId,
-                    signerId = signerId,
-                    status = SignatureStatus.SIGNED,
-                    signedAt = signedAt,
-                    signatureIp = signatureIp
-                )
-                // Regra 5: Conclusão Automática - Se não existir nenhum status PENDING para este documentId -> COMPLETED
-                val remainingPending = documentDao.countPendingSignersForDocument(documentId)
-                if (remainingPending == 0) {
-                    documentDao.updateDocumentStatus(documentId, DocumentStatus.COMPLETED)
-                }
-            }
+            // Regra 5: Conclusão Automática - Atualizar para SIGNED e concluir documento se não houver mais PENDING
+            documentDao.signAndAutoCompleteIfAllSigned(
+                documentId = documentId,
+                signerId = signerId,
+                signedAt = signedAt,
+                signatureIp = signatureIp
+            )
         }
     }
 

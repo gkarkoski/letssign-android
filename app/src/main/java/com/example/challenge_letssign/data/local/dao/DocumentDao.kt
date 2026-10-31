@@ -83,4 +83,34 @@ interface DocumentDao {
         """
     )
     suspend fun countPendingSignersForDocument(documentId: String): Int
+    // Regra 3: Reatividade de Exclusão - Excluir em cascata os SignatureFieldEntity associados
+    @Transaction
+    suspend fun removeSignerWithCascadeFields(documentId: String, signerId: String) {
+        deleteSignatureFieldsForSigner(documentId, signerId)
+        deleteDocumentSigner(documentId, signerId)
+    }
+
+    @Query("DELETE FROM signature_fields WHERE documentId = :documentId AND signerId = :signerId")
+    suspend fun deleteSignatureFieldsForSigner(documentId: String, signerId: String)
+
+    // Regra 5: Conclusão Automática - Atualizar status para SIGNED e verificar se não há mais PENDING
+    @Transaction
+    suspend fun signAndAutoCompleteIfAllSigned(
+        documentId: String,
+        signerId: String,
+        signedAt: Long,
+        signatureIp: String
+    ) {
+        updateSignerSignatureStatus(
+            documentId = documentId,
+            signerId = signerId,
+            status = SignatureStatus.SIGNED,
+            signedAt = signedAt,
+            signatureIp = signatureIp
+        )
+        val remainingPending = countPendingSignersForDocument(documentId)
+        if (remainingPending == 0) {
+            updateDocumentStatus(documentId, DocumentStatus.COMPLETED)
+        }
+    }
 }
