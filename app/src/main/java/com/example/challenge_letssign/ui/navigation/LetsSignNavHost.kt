@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.ui.admin.AdminDashboardScreen
+import com.example.challenge_letssign.ui.admin.positioning.PdfPositioningScreen
 import com.example.challenge_letssign.ui.admin.preparation.DocumentPreparationScreen
 import com.example.challenge_letssign.ui.auth.LoginScreen
 import com.example.challenge_letssign.ui.signer.SignerDashboardScreen
@@ -19,6 +20,7 @@ object LetsSignRoutes {
     const val ADMIN_DASHBOARD = "admin_dashboard/{userId}/{userName}"
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
     const val DOCUMENT_PREPARATION = "document_preparation/{adminId}"
+    const val PDF_POSITIONING = "pdf_positioning/{documentId}"
 
     fun adminDashboard(userId: String, userName: String): String =
         "admin_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
@@ -28,6 +30,9 @@ object LetsSignRoutes {
 
     fun documentPreparation(adminId: String): String =
         "document_preparation/${encodeSegment(adminId)}"
+
+    fun pdfPositioning(documentId: String): String =
+        "pdf_positioning/${encodeSegment(documentId)}"
 
     fun resolvePostLoginRoute(user: User): String = when (user.role) {
         UserRole.ADMIN -> adminDashboard(user.id, user.name)
@@ -95,9 +100,31 @@ fun LetsSignNavHost(
                 onCancel = {
                     navController.popBackStack()
                 },
-                onDraftPrepared = { _ ->
-                    // No Milestone 5 redirecionará para a etapa 3 (Posicionamento no PDF)
+                onDraftPrepared = { document ->
+                    navController.navigate(LetsSignRoutes.pdfPositioning(document.id))
+                }
+            )
+        }
+
+        composable(
+            route = LetsSignRoutes.PDF_POSITIONING,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId").orEmpty()
+
+            PdfPositioningScreen(
+                documentId = documentId,
+                onBack = {
                     navController.popBackStack()
+                },
+                onContinueToReview = { _ ->
+                    // No Milestone 6 redirecionará para a Tela de Review e Disparo
+                    navController.popBackStack(
+                        route = LetsSignRoutes.ADMIN_DASHBOARD,
+                        inclusive = false
+                    )
                 }
             )
         }
