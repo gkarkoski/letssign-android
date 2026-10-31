@@ -435,3 +435,164 @@ fun ChevronRightIcon(
         )
     }
 }
+
+@Composable
+fun SearchIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.8.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawCircle(
+            color = color,
+            radius = w * 0.32f,
+            center = Offset(w * 0.44f, h * 0.44f),
+            style = Stroke(width = strokeWidth)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.68f, h * 0.68f),
+            end = Offset(w * 0.88f, h * 0.88f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun CloseIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.8.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawLine(
+            color = color,
+            start = Offset(w * 0.22f, h * 0.22f),
+            end = Offset(w * 0.78f, h * 0.78f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.78f, h * 0.22f),
+            end = Offset(w * 0.22f, h * 0.78f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun UserPlusIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.75.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        // Head
+        drawCircle(
+            color = color,
+            radius = w * 0.16f,
+            center = Offset(w * 0.38f, h * 0.34f),
+            style = Stroke(width = strokeWidth)
+        )
+        // Shoulders
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(w * 0.12f, h * 0.56f),
+            size = Size(w * 0.52f, h * 0.4f),
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        // Plus sign
+        drawLine(
+            color = color,
+            start = Offset(w * 0.78f, h * 0.32f),
+            end = Offset(w * 0.78f, h * 0.56f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.66f, h * 0.44f),
+            end = Offset(w * 0.9f, h * 0.44f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun TrashIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.7.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        // Top lid
+        drawLine(
+            color = color,
+            start = Offset(w * 0.18f, h * 0.25f),
+            end = Offset(w * 0.82f, h * 0.25f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        // Handle
+        drawLine(
+            color = color,
+            start = Offset(w * 0.38f, h * 0.16f),
+            end = Offset(w * 0.62f, h * 0.16f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        // Body
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.26f, h * 0.25f),
+            size = Size(w * 0.48f, h * 0.62f),
+            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+            style = Stroke(width = strokeWidth)
+        )
+    }
+}
+
+@Composable
+fun EditPenIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.7.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        val path = Path().apply {
+            moveTo(w * 0.2f, h * 0.8f)
+            lineTo(w * 0.26f, h * 0.6f)
+            lineTo(w * 0.68f, h * 0.18f)
+            lineTo(w * 0.82f, h * 0.32f)
+            lineTo(w * 0.4f, h * 0.74f)
+            close()
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = strokeWidth, join = StrokeJoin.Round)
+        )
+    }
+}
