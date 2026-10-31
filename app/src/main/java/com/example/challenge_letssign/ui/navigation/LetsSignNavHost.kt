@@ -1,6 +1,5 @@
 package com.example.challenge_letssign.ui.navigation
 
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -20,15 +19,18 @@ object LetsSignRoutes {
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
 
     fun adminDashboard(userId: String, userName: String): String =
-        "admin_dashboard/${Uri.encode(userId)}/${Uri.encode(userName)}"
+        "admin_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
 
     fun signerDashboard(userId: String, userName: String): String =
-        "signer_dashboard/${Uri.encode(userId)}/${Uri.encode(userName)}"
+        "signer_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
 
     fun resolvePostLoginRoute(user: User): String = when (user.role) {
         UserRole.ADMIN -> adminDashboard(user.id, user.name)
         UserRole.SIGNER -> signerDashboard(user.id, user.name)
     }
+
+    private fun encodeSegment(value: String): String =
+        java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 }
 
 @Composable
