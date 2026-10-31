@@ -596,3 +596,126 @@ fun EditPenIcon(
         )
     }
 }
+
+@Composable
+fun UploadTrayIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.8.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        // Tray
+        val tray = Path().apply {
+            moveTo(w * 0.16f, h * 0.62f)
+            lineTo(w * 0.16f, h * 0.82f)
+            lineTo(w * 0.84f, h * 0.82f)
+            lineTo(w * 0.84f, h * 0.62f)
+        }
+        drawPath(
+            path = tray,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        // Arrow shaft
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.64f),
+            end = Offset(w * 0.5f, h * 0.2f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        // Arrow head
+        val arrow = Path().apply {
+            moveTo(w * 0.32f, h * 0.38f)
+            lineTo(w * 0.5f, h * 0.2f)
+            lineTo(w * 0.68f, h * 0.38f)
+        }
+        drawPath(
+            path = arrow,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun FileAlertIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.75.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        val docPath = Path().apply {
+            moveTo(w * 0.22f, h * 0.1f)
+            lineTo(w * 0.6f, h * 0.1f)
+            lineTo(w * 0.78f, h * 0.28f)
+            lineTo(w * 0.78f, h * 0.9f)
+            lineTo(w * 0.22f, h * 0.9f)
+            close()
+        }
+        drawPath(
+            path = docPath,
+            color = color,
+            style = Stroke(width = strokeWidth, join = StrokeJoin.Round)
+        )
+        val foldPath = Path().apply {
+            moveTo(w * 0.58f, h * 0.1f)
+            lineTo(w * 0.58f, h * 0.3f)
+            lineTo(w * 0.78f, h * 0.3f)
+        }
+        drawPath(
+            path = foldPath,
+            color = color,
+            style = Stroke(width = strokeWidth, join = StrokeJoin.Round)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.42f),
+            end = Offset(w * 0.5f, h * 0.64f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = color,
+            radius = strokeWidth * 0.65f,
+            center = Offset(w * 0.5f, h * 0.76f)
+        )
+    }
+}
+
+@Composable
+fun SyncArrowsIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.8.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawArc(
+            color = color,
+            startAngle = 200f,
+            sweepAngle = 130f,
+            useCenter = false,
+            topLeft = Offset(w * 0.18f, h * 0.18f),
+            size = Size(w * 0.64f, h * 0.64f),
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        drawArc(
+            color = color,
+            startAngle = 20f,
+            sweepAngle = 130f,
+            useCenter = false,
+            topLeft = Offset(w * 0.18f, h * 0.18f),
+            size = Size(w * 0.64f, h * 0.64f),
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+    }
+}
