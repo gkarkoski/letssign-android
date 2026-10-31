@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.challenge_letssign.ui.admin.signers.SignerManagementScreen
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
 import com.example.challenge_letssign.ui.components.LetsSignBottomNavTab
 import com.example.challenge_letssign.ui.components.LetsSignBottomNavigationBar
@@ -127,23 +128,7 @@ fun AdminDashboardScreen(
                 }
 
                 LetsSignBottomNavTab.SIGNATURES -> {
-                    LetsSignGradientHeader(
-                        title = "Signatários",
-                        subtitle = "Cadastre e gerencie os signatários dos seus documentos."
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Gestão de Signatários (Milestone 3)",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                color = LetsSignColors.Muted
-                            )
-                        )
-                    }
+                    SignerManagementScreen()
                 }
 
                 LetsSignBottomNavTab.PROFILE -> {
