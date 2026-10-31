@@ -95,3 +95,78 @@ fun LetsSignBottomNavigationBar(
         }
     }
 }
+
+@Composable
+fun LetsSignWizardStepper(
+    currentStep: Int,
+    totalSteps: Int = 5,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        for (step in 1..totalSteps) {
+            val isCompleted = step < currentStep
+            val isCurrent = step == currentStep
+
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        when {
+                            isCurrent -> LetsSignColors.VioletSoft
+                            else -> Color.Transparent
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(34.dp)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            when {
+                                isCompleted -> LetsSignColors.Primary
+                                else -> Color.White
+                            }
+                        )
+                        .border(
+                            width = if (isCurrent) 2.dp else 1.25.dp,
+                            color = when {
+                                isCompleted || isCurrent -> LetsSignColors.Primary
+                                else -> LetsSignColors.Line
+                            },
+                            shape = RoundedCornerShape(999.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isCompleted) {
+                        CheckIcon(color = Color.White, size = 15.dp)
+                    } else {
+                        Text(
+                            text = step.toString(),
+                            color = if (isCurrent) LetsSignColors.Primary else LetsSignColors.Muted,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            if (step < totalSteps) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(2.dp)
+                        .background(
+                            if (step < currentStep) LetsSignColors.Primary else LetsSignColors.Line
+                        )
+                )
+            }
+        }
+    }
+}

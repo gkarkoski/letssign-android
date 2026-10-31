@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.ui.admin.AdminDashboardScreen
+import com.example.challenge_letssign.ui.admin.preparation.DocumentPreparationScreen
 import com.example.challenge_letssign.ui.auth.LoginScreen
 import com.example.challenge_letssign.ui.signer.SignerDashboardScreen
 
@@ -17,12 +18,16 @@ object LetsSignRoutes {
     const val LOGIN = "login"
     const val ADMIN_DASHBOARD = "admin_dashboard/{userId}/{userName}"
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
+    const val DOCUMENT_PREPARATION = "document_preparation/{adminId}"
 
     fun adminDashboard(userId: String, userName: String): String =
         "admin_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
 
     fun signerDashboard(userId: String, userName: String): String =
         "signer_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
+
+    fun documentPreparation(adminId: String): String =
+        "document_preparation/${encodeSegment(adminId)}"
 
     fun resolvePostLoginRoute(user: User): String = when (user.role) {
         UserRole.ADMIN -> adminDashboard(user.id, user.name)
@@ -70,6 +75,29 @@ fun LetsSignNavHost(
                     navController.navigate(LetsSignRoutes.LOGIN) {
                         popUpTo(0) { inclusive = true }
                     }
+                },
+                onNewDocumentClick = {
+                    navController.navigate(LetsSignRoutes.documentPreparation(userId))
+                }
+            )
+        }
+
+        composable(
+            route = LetsSignRoutes.DOCUMENT_PREPARATION,
+            arguments = listOf(
+                navArgument("adminId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val adminId = backStackEntry.arguments?.getString("adminId").orEmpty()
+
+            DocumentPreparationScreen(
+                ownerAdminId = adminId,
+                onCancel = {
+                    navController.popBackStack()
+                },
+                onDraftPrepared = { _ ->
+                    // No Milestone 5 redirecionará para a etapa 3 (Posicionamento no PDF)
+                    navController.popBackStack()
                 }
             )
         }

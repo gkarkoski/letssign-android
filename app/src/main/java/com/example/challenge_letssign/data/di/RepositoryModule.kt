@@ -1,8 +1,10 @@
 package com.example.challenge_letssign.data.di
 
 import com.example.challenge_letssign.data.repository.local.LocalDocumentRepository
+import com.example.challenge_letssign.data.repository.local.LocalPdfStorageRepository
 import com.example.challenge_letssign.data.repository.local.LocalUserRepository
 import com.example.challenge_letssign.domain.repository.DocumentRepository
+import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
@@ -25,4 +27,10 @@ abstract class RepositoryModule {
     abstract fun bindDocumentRepository(
         localDocumentRepository: LocalDocumentRepository
     ): DocumentRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPdfStorageRepository(
+        localPdfStorageRepository: LocalPdfStorageRepository
+    ): PdfStorageRepository
 }
