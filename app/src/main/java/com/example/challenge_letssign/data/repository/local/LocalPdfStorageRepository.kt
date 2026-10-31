@@ -1,15 +1,21 @@
 package com.example.challenge_letssign.data.repository.local
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.example.challenge_letssign.data.di.IoDispatcher
 import com.example.challenge_letssign.domain.model.ImportedPdfFile
+import com.example.challenge_letssign.domain.model.SignatureField
 import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.utils.AppResult
+import com.example.challenge_letssign.utils.PdfCoordinateConverter
 import com.example.challenge_letssign.utils.runCatchingResult
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -100,6 +106,90 @@ class LocalPdfStorageRepository @Inject constructor(
                 }
             }
         }
+
+    /**
+     * Renderização no PDF (PDFBox - Milestone 7):
+     * 1. Carregar arquivo original via PDDocument.load().
+     * 2. Ir para a página correta (PDPage).
+     * 3. Calcular posição absoluta: absX = relativeX * page.cropBox.width.
+     * 4. Desenhar o Bitmap da assinatura usando PDPageContentStream.
+     * 5. Salvar o documento (sobrescrevendo o arquivo interno).
+     */
+    override suspend fun embedSignaturesIntoPdf(
+        internalFileName: String,
+        fields: List<SignatureField>,
+        signaturePngBytes: ByteArray
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao gravar assinatura no documento PDF.") {
+            val pdfFile = File(context.filesDir, internalFileName)
+            if (!pdfFile.exists()) {
+                throw IllegalStateException("Arquivo PDF original não encontrado.")
+            }
+            if (fields.isEmpty()) {
+                throw IllegalArgumentException("Nenhum campo de assinatura atribuído ao signatário.")
+            }
+
+            val signatureBitmap = BitmapFactory.decodeByteArray(
+                signaturePngBytes,
+                0,
+                signaturePngBytes.size
+            ) ?: throw IllegalArgumentException("Imagem da assinatura inválida.")
+
+            val tempOutFile = File(context.filesDir, "signed_tmp_${UUID.randomUUID()}.pdf")
+            try {
+                PDDocument.load(pdfFile).use { document ->
+                    val pdImage = LosslessFactory.createFromImage(document, signatureBitmap)
+                    val totalPages = document.numberOfPages
+
+                    for (field in fields) {
+                        val pageIdx = field.pageNumber.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+                        val page = document.getPage(pageIdx)
+                        val cropBox = page.cropBox
+
+                        val placement = PdfCoordinateConverter.relativeToPdfPageCoordinates(
+                            relativeX = field.relativeX,
+                            relativeY = field.relativeY,
+                            relativeWidth = field.relativeWidth,
+                            relativeHeight = field.relativeHeight,
+                            cropBoxWidth = cropBox.width,
+                            cropBoxHeight = cropBox.height,
+                            cropBoxLowerLeftX = cropBox.lowerLeftX,
+                            cropBoxLowerLeftY = cropBox.lowerLeftY
+                        )
+
+                        PDPageContentStream(
+                            document,
+                            page,
+                            PDPageContentStream.AppendMode.APPEND,
+                            true,
+                            true
+                        ).use { contentStream ->
+                            contentStream.drawImage(
+                                pdImage,
+                                placement.absX,
+                                placement.absY,
+                                placement.absWidth,
+                                placement.absHeight
+                            )
+                        }
+                    }
+
+                    document.save(tempOutFile)
+                }
+
+                // Sobrescreve o arquivo original de forma segura
+                if (!tempOutFile.renameTo(pdfFile)) {
+                    tempOutFile.copyTo(pdfFile, overwrite = true)
+                    tempOutFile.delete()
+                }
+            } finally {
+                signatureBitmap.recycle()
+                if (tempOutFile.exists()) {
+                    tempOutFile.delete()
+                }
+            }
+        }
+    }
 
     private fun resolveDisplayName(uri: Uri): String? {
         return try {
