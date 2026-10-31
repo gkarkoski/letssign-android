@@ -178,6 +178,12 @@ class DocumentPreparationTest {
 
         override suspend fun deletePdfFile(internalFileName: String): AppResult<Unit> =
             AppResult.Success(Unit)
+
+        override suspend fun embedSignaturesIntoPdf(
+            internalFileName: String,
+            fields: List<SignatureField>,
+            signaturePngBytes: ByteArray
+        ): AppResult<Unit> = AppResult.Success(Unit)
     }
 
     private class FakePrepDocumentRepository : DocumentRepository {
