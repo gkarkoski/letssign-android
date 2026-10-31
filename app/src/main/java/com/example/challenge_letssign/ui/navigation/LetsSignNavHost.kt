@@ -10,8 +10,10 @@ import androidx.navigation.navArgument
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.ui.admin.AdminDashboardScreen
+import com.example.challenge_letssign.ui.admin.details.DocumentDetailsScreen
 import com.example.challenge_letssign.ui.admin.positioning.PdfPositioningScreen
 import com.example.challenge_letssign.ui.admin.preparation.DocumentPreparationScreen
+import com.example.challenge_letssign.ui.admin.review.DocumentReviewScreen
 import com.example.challenge_letssign.ui.auth.LoginScreen
 import com.example.challenge_letssign.ui.signer.SignerDashboardScreen
 
@@ -21,6 +23,8 @@ object LetsSignRoutes {
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
     const val DOCUMENT_PREPARATION = "document_preparation/{adminId}"
     const val PDF_POSITIONING = "pdf_positioning/{documentId}"
+    const val DOCUMENT_REVIEW = "document_review/{documentId}"
+    const val DOCUMENT_DETAILS = "document_details/{documentId}"
 
     fun adminDashboard(userId: String, userName: String): String =
         "admin_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
@@ -33,6 +37,12 @@ object LetsSignRoutes {
 
     fun pdfPositioning(documentId: String): String =
         "pdf_positioning/${encodeSegment(documentId)}"
+
+    fun documentReview(documentId: String): String =
+        "document_review/${encodeSegment(documentId)}"
+
+    fun documentDetails(documentId: String): String =
+        "document_details/${encodeSegment(documentId)}"
 
     fun resolvePostLoginRoute(user: User): String = when (user.role) {
         UserRole.ADMIN -> adminDashboard(user.id, user.name)
@@ -83,6 +93,9 @@ fun LetsSignNavHost(
                 },
                 onNewDocumentClick = {
                     navController.navigate(LetsSignRoutes.documentPreparation(userId))
+                },
+                onDocumentClick = { documentId ->
+                    navController.navigate(LetsSignRoutes.documentDetails(documentId))
                 }
             )
         }
@@ -119,12 +132,49 @@ fun LetsSignNavHost(
                 onBack = {
                     navController.popBackStack()
                 },
-                onContinueToReview = { _ ->
-                    // No Milestone 6 redirecionará para a Tela de Review e Disparo
+                onContinueToReview = { docId ->
+                    navController.navigate(LetsSignRoutes.documentReview(docId))
+                }
+            )
+        }
+
+        composable(
+            route = LetsSignRoutes.DOCUMENT_REVIEW,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId").orEmpty()
+
+            DocumentReviewScreen(
+                documentId = documentId,
+                onBack = {
+                    navController.popBackStack()
+                },
+                onDocumentSentSuccess = {
                     navController.popBackStack(
                         route = LetsSignRoutes.ADMIN_DASHBOARD,
                         inclusive = false
                     )
+                }
+            )
+        }
+
+        composable(
+            route = LetsSignRoutes.DOCUMENT_DETAILS,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId").orEmpty()
+
+            DocumentDetailsScreen(
+                documentId = documentId,
+                onBack = {
+                    navController.popBackStack()
+                },
+                onOpenPositioningOrViewPdf = { docId ->
+                    navController.navigate(LetsSignRoutes.pdfPositioning(docId))
                 }
             )
         }
