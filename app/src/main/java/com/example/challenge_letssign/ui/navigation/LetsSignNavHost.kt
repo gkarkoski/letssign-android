@@ -16,6 +16,7 @@ import com.example.challenge_letssign.ui.admin.preparation.DocumentPreparationSc
 import com.example.challenge_letssign.ui.admin.review.DocumentReviewScreen
 import com.example.challenge_letssign.ui.auth.LoginScreen
 import com.example.challenge_letssign.ui.signer.SignerDashboardScreen
+import com.example.challenge_letssign.ui.signer.signing.SignerDocumentSignScreen
 
 object LetsSignRoutes {
     const val LOGIN = "login"
@@ -25,6 +26,7 @@ object LetsSignRoutes {
     const val PDF_POSITIONING = "pdf_positioning/{documentId}"
     const val DOCUMENT_REVIEW = "document_review/{documentId}"
     const val DOCUMENT_DETAILS = "document_details/{documentId}"
+    const val SIGNER_DOCUMENT_SIGN = "signer_document_sign/{documentId}/{signerId}"
 
     fun adminDashboard(userId: String, userName: String): String =
         "admin_dashboard/${encodeSegment(userId)}/${encodeSegment(userName)}"
@@ -43,6 +45,9 @@ object LetsSignRoutes {
 
     fun documentDetails(documentId: String): String =
         "document_details/${encodeSegment(documentId)}"
+
+    fun signerDocumentSign(documentId: String, signerId: String): String =
+        "signer_document_sign/${encodeSegment(documentId)}/${encodeSegment(signerId)}"
 
     fun resolvePostLoginRoute(user: User): String = when (user.role) {
         UserRole.ADMIN -> adminDashboard(user.id, user.name)
@@ -196,6 +201,28 @@ fun LetsSignNavHost(
                     navController.navigate(LetsSignRoutes.LOGIN) {
                         popUpTo(0) { inclusive = true }
                     }
+                },
+                onOpenDocumentForSigning = { docId ->
+                    navController.navigate(LetsSignRoutes.signerDocumentSign(docId, userId))
+                }
+            )
+        }
+
+        composable(
+            route = LetsSignRoutes.SIGNER_DOCUMENT_SIGN,
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.StringType },
+                navArgument("signerId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId").orEmpty()
+            val signerId = backStackEntry.arguments?.getString("signerId").orEmpty()
+
+            SignerDocumentSignScreen(
+                documentId = documentId,
+                signerId = signerId,
+                onBack = {
+                    navController.popBackStack()
                 }
             )
         }

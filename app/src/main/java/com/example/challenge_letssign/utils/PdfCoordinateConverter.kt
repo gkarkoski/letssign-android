@@ -14,6 +14,13 @@ data class PixelBounds(
     val heightPx: Float
 )
 
+data class PdfAbsolutePlacement(
+    val absX: Float,
+    val absY: Float,
+    val absWidth: Float,
+    val absHeight: Float
+)
+
 object PdfCoordinateConverter {
 
     const val DEFAULT_RELATIVE_WIDTH = 0.36f
@@ -91,4 +98,33 @@ object PdfCoordinateConverter {
             relativeWidth = coords.relativeWidth,
             relativeHeight = coords.relativeHeight
         )
+
+    /**
+     * Renderização no PDF (PDFBox - Milestone 7):
+     * Calcula a posição absoluta na página do PDF a partir das coordenadas relativas (0.0 a 1.0)
+     * e das dimensões do cropBox da PDPage (convertendo a origem top-left da tela para
+     * o sistema cartesiano bottom-left do PDFBox).
+     */
+    fun relativeToPdfPageCoordinates(
+        relativeX: Float,
+        relativeY: Float,
+        relativeWidth: Float,
+        relativeHeight: Float,
+        cropBoxWidth: Float,
+        cropBoxHeight: Float,
+        cropBoxLowerLeftX: Float = 0f,
+        cropBoxLowerLeftY: Float = 0f
+    ): PdfAbsolutePlacement {
+        val absWidth = relativeWidth * cropBoxWidth
+        val absHeight = relativeHeight * cropBoxHeight
+        val absX = cropBoxLowerLeftX + (relativeX * cropBoxWidth)
+        // No PDFBox o eixo Y cresce de baixo para cima
+        val absY = cropBoxLowerLeftY + cropBoxHeight - (relativeY * cropBoxHeight) - absHeight
+        return PdfAbsolutePlacement(
+            absX = absX,
+            absY = absY,
+            absWidth = absWidth,
+            absHeight = absHeight
+        )
+    }
 }
