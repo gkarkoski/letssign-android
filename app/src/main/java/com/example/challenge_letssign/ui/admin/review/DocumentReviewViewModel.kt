@@ -20,6 +20,7 @@ data class DocumentReviewUiState(
     val document: Document? = null,
     val signers: List<DocumentSignerWithUser> = emptyList(),
     val fields: List<SignatureField> = emptyList(),
+    val inviteMessage: String = Document.DEFAULT_INVITE_MESSAGE,
     val isSending: Boolean = false,
     val errorMessage: String? = null,
     val isSentSuccess: Boolean = false
@@ -49,7 +50,13 @@ class DocumentReviewViewModel @Inject constructor(
 
         viewModelScope.launch {
             documentRepository.observeDocumentById(documentId).collect { doc ->
-                _uiState.update { it.copy(document = doc) }
+                _uiState.update { state ->
+                    state.copy(
+                        document = doc,
+                        inviteMessage = doc?.inviteMessage?.takeIf { it.isNotBlank() }
+                            ?: state.inviteMessage
+                    )
+                }
             }
         }
 
@@ -66,14 +73,29 @@ class DocumentReviewViewModel @Inject constructor(
         }
     }
 
+    fun onInviteMessageChanged(newMessage: String) {
+        _uiState.update {
+            it.copy(
+                inviteMessage = newMessage,
+                errorMessage = null
+            )
+        }
+    }
+
     fun onSendDocument() {
-        val docId = _uiState.value.document?.id ?: return
-        if (_uiState.value.isSending) return
+        val currentState = _uiState.value
+        val docId = currentState.document?.id ?: return
+        if (currentState.isSending) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, errorMessage = null) }
 
-            when (val result = sendDocumentForSignatureUseCase(docId)) {
+            when (
+                val result = sendDocumentForSignatureUseCase(
+                    documentId = docId,
+                    inviteMessage = currentState.inviteMessage
+                )
+            ) {
                 is AppResult.Success -> {
                     _uiState.update {
                         it.copy(

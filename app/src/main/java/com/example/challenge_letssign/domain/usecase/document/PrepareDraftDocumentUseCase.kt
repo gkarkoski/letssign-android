@@ -40,13 +40,45 @@ class PrepareDraftDocumentUseCase @Inject constructor(
             return AppResult.Error("Selecione ao menos 1 signatário para continuar.")
         }
 
+        if (existingDocumentId != null) {
+            val existingDoc = documentRepository.getDocumentById(existingDocumentId).getOrNull()
+            if (existingDoc != null && existingDoc.ownerAdminId.isNotBlank()) {
+                return prepareInternal(
+                    documentId = existingDoc.id,
+                    title = trimmedTitle,
+                    internalFileName = internalFileName,
+                    ownerAdminId = existingDoc.ownerAdminId,
+                    signerAssignments = signerAssignments,
+                    createdAtMillis = existingDoc.createdAt
+                )
+            }
+        }
+
         val documentId = existingDocumentId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        return prepareInternal(
+            documentId = documentId,
+            title = trimmedTitle,
+            internalFileName = internalFileName,
+            ownerAdminId = ownerAdminId,
+            signerAssignments = signerAssignments,
+            createdAtMillis = nowUtcMillis
+        )
+    }
+
+    private suspend fun prepareInternal(
+        documentId: String,
+        title: String,
+        internalFileName: String,
+        ownerAdminId: String,
+        signerAssignments: List<SelectedSignerAssignment>,
+        createdAtMillis: Long
+    ): AppResult<Document> {
         val document = Document(
             id = documentId,
-            title = trimmedTitle,
+            title = title,
             fileName = internalFileName,
             status = DocumentStatus.DRAFT,
-            createdAt = nowUtcMillis,
+            createdAt = createdAtMillis,
             ownerAdminId = ownerAdminId
         )
 

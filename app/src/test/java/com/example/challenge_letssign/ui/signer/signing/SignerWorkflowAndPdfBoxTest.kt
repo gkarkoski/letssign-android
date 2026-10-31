@@ -174,6 +174,21 @@ class SignerWorkflowAndPdfBoxTest {
             return AppResult.Success(Unit)
         }
 
+        override suspend fun dispatchDocumentForSignature(
+            documentId: String,
+            sentAt: Long,
+            inviteMessage: String
+        ): AppResult<Unit> {
+            docs[documentId]?.let {
+                docs[documentId] = it.copy(
+                    status = DocumentStatus.PENDING,
+                    sentAt = sentAt,
+                    inviteMessage = inviteMessage
+                )
+            }
+            return AppResult.Success(Unit)
+        }
+
         override suspend fun deleteDocument(documentId: String): AppResult<Unit> = AppResult.Success(Unit)
         override fun observeDocumentSigners(documentId: String): Flow<List<DocumentSignerWithUser>> = emptyFlow()
 

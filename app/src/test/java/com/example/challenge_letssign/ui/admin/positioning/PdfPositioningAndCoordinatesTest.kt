@@ -210,6 +210,12 @@ class PdfPositioningAndCoordinatesTest {
         override suspend fun updateDocumentStatus(documentId: String, status: DocumentStatus): AppResult<Unit> =
             AppResult.Success(Unit)
 
+        override suspend fun dispatchDocumentForSignature(
+            documentId: String,
+            sentAt: Long,
+            inviteMessage: String
+        ): AppResult<Unit> = AppResult.Success(Unit)
+
         override suspend fun deleteDocument(documentId: String): AppResult<Unit> =
             AppResult.Success(Unit)
 

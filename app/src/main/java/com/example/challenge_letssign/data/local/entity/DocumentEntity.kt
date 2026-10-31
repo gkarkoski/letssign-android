@@ -28,7 +28,9 @@ data class DocumentEntity(
     val fileName: String,
     val status: DocumentStatus,
     val createdAt: Long,
-    val ownerAdminId: String
+    val ownerAdminId: String,
+    val sentAt: Long? = null,
+    val inviteMessage: String? = null
 )
 
 fun DocumentEntity.toDomain(): Document = Document(
@@ -37,7 +39,9 @@ fun DocumentEntity.toDomain(): Document = Document(
     fileName = fileName,
     status = status,
     createdAt = createdAt,
-    ownerAdminId = ownerAdminId
+    ownerAdminId = ownerAdminId,
+    sentAt = sentAt,
+    inviteMessage = inviteMessage
 )
 
 fun Document.toEntity(): DocumentEntity = DocumentEntity(
@@ -46,5 +50,7 @@ fun Document.toEntity(): DocumentEntity = DocumentEntity(
     fileName = fileName,
     status = status,
     createdAt = createdAt,
-    ownerAdminId = ownerAdminId
+    ownerAdminId = ownerAdminId,
+    sentAt = sentAt,
+    inviteMessage = inviteMessage
 )
