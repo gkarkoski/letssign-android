@@ -135,6 +135,15 @@ class LoginAndRoutingTest {
         override suspend fun getUserById(userId: String): AppResult<User> =
             AppResult.Error("Not implemented")
 
+        override suspend fun requestLoginCode(email: String, expectedRole: UserRole?): AppResult<User> =
+            AppResult.Error("Not implemented")
+
+        override suspend fun verifyLoginCode(
+            email: String,
+            code: String,
+            expectedRole: UserRole?
+        ): AppResult<User> = AppResult.Error("Not implemented")
+
         override suspend fun getUserByEmail(email: String): AppResult<User?> =
             AppResult.Success(null)
 

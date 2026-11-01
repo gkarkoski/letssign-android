@@ -3,6 +3,7 @@ package com.example.challenge_letssign.data.repository.local
 import com.example.challenge_letssign.data.local.dao.UserDao
 import com.example.challenge_letssign.data.local.entity.UserEntity
 import com.example.challenge_letssign.data.local.seed.DatabaseSeeder
+import com.example.challenge_letssign.domain.model.PersonType
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.utils.AppResult
@@ -35,33 +36,48 @@ class LocalUserRepositoryTest {
     }
 
     @Test
-    fun `DatabaseSeeder should seed 1 Admin and 2 Signers without duplicating`() = runTest(testDispatcher) {
+    fun `DatabaseSeeder should seed 1 Admin and 6 Figma Signers (Fisica and Juridica) without duplicating`() = runTest(testDispatcher) {
         DatabaseSeeder.seedIfNeeded(fakeUserDao)
-        assertEquals(3, fakeUserDao.getUserCount())
+        assertEquals(7, fakeUserDao.getUserCount())
 
         // Calling seedIfNeeded again should not duplicate users
         DatabaseSeeder.seedIfNeeded(fakeUserDao)
-        assertEquals(3, fakeUserDao.getUserCount())
+        assertEquals(7, fakeUserDao.getUserCount())
 
         val signers = repository.observeSigners().first()
-        assertEquals(2, signers.size)
+        assertEquals(6, signers.size)
+        assertTrue(signers.any { it.name == "Marina Albuquerque" && it.groupName == "Jurídico" })
+        assertTrue(signers.any { it.name == "Nova Soluções Ltda." && it.personType == PersonType.JURIDICA })
 
         val admins = repository.observeUsersByRole(UserRole.ADMIN).first()
         assertEquals(1, admins.size)
-        assertEquals("admin@letssign.com", admins.first().email)
+        assertEquals("admin@exemplo.com.br", admins.first().email)
     }
 
     @Test
-    fun `login should return Success for valid credentials and Error for invalid`() = runTest(testDispatcher) {
+    fun `login and OTP 6-digit flow should support both Figma emails and legacy alias emails`() = runTest(testDispatcher) {
         DatabaseSeeder.seedIfNeeded(fakeUserDao)
 
-        val validResult = repository.login("admin@letssign.com", "123456")
-        assertTrue(validResult is AppResult.Success)
-        assertEquals(UserRole.ADMIN, validResult.getOrNull()?.role)
+        // Legacy alias login
+        val aliasLogin = repository.login("admin@letssign.com", "123456")
+        assertTrue(aliasLogin is AppResult.Success)
+        assertEquals(UserRole.ADMIN, aliasLogin.getOrNull()?.role)
 
-        val invalidResult = repository.login("admin@letssign.com", "wrong_pass")
-        assertTrue(invalidResult is AppResult.Error)
-        assertEquals("E-mail ou senha inválidos.", (invalidResult as AppResult.Error).message)
+        // Figma OTP request & verification
+        val requestAdminOtp = repository.requestLoginCode("admin@exemplo.com.br", UserRole.ADMIN)
+        assertTrue(requestAdminOtp.isSuccess)
+
+        val verifyAdminOtp = repository.verifyLoginCode("admin@exemplo.com.br", "482910", UserRole.ADMIN)
+        assertTrue(verifyAdminOtp.isSuccess)
+        assertEquals(UserRole.ADMIN, verifyAdminOtp.getOrNull()?.role)
+
+        // Invalid OTP code (000000 or < 6 digits) triggers Login Código inválido error
+        val invalidOtp = repository.verifyLoginCode("admin@exemplo.com.br", "000000", UserRole.ADMIN)
+        assertTrue(invalidOtp.isError)
+        assertEquals(
+            "Código inválido ou expirado. Peça um novo código para continuar.",
+            (invalidOtp as AppResult.Error).message
+        )
     }
 
     @Test
@@ -70,8 +86,8 @@ class LocalUserRepositoryTest {
 
         val duplicateUser = User(
             id = "new-id",
-            name = "Outro Carlos",
-            email = "CARLOS@letssign.com",
+            name = "Outra Marina",
+            email = "MARINA.ALBUQUERQUE@exemplo.com.br",
             phone = "11900000000",
             password = "123",
             role = UserRole.SIGNER
@@ -111,7 +127,7 @@ class LocalUserRepositoryTest {
         private val usersFlow = MutableStateFlow<List<UserEntity>>(emptyList())
 
         override suspend fun getUserByCredentials(email: String, password: String): UserEntity? =
-            usersFlow.value.firstOrNull { it.email == email && it.password == password }
+            usersFlow.value.firstOrNull { it.email.equals(email, ignoreCase = true) && it.password == password }
 
         override suspend fun getUserById(userId: String): UserEntity? =
             usersFlow.value.firstOrNull { it.id == userId }

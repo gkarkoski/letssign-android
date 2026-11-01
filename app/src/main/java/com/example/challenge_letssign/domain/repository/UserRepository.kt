@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.Flow
 
 interface UserRepository {
     suspend fun login(email: String, password: String): AppResult<User>
+    suspend fun requestLoginCode(email: String, expectedRole: UserRole? = null): AppResult<User>
+    suspend fun verifyLoginCode(
+        email: String,
+        code: String,
+        expectedRole: UserRole? = null
+    ): AppResult<User>
     suspend fun getUserById(userId: String): AppResult<User>
     suspend fun getUserByEmail(email: String): AppResult<User?>
     fun observeSigners(): Flow<List<User>>
