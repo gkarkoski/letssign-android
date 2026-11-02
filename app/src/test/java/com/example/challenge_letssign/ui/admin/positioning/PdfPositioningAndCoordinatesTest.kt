@@ -5,10 +5,9 @@ import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignatureFieldType
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.model.SignerRoleClass
-import com.example.challenge_letssign.domain.model.User
-import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.usecase.document.DeleteSignatureFieldUseCase
 import com.example.challenge_letssign.domain.usecase.document.SaveSignatureFieldUseCase
@@ -78,12 +77,12 @@ class PdfPositioningAndCoordinatesTest {
     }
 
     @Test
-    fun `Regra 2 - SaveSignatureFieldUseCase blocks drop outside page boundaries`() = runTest(testDispatcher) {
+    fun `Regra 2 - SaveSignatureFieldUseCase blocks drop outside page boundaries and saves AI Rubrica fields when valid`() = runTest(testDispatcher) {
         fakeDocRepo.setDocument(
             Document("doc-1", "Contrato", "c.pdf", DocumentStatus.DRAFT, 100L, "admin-1")
         )
 
-        // relativeX (0.80) + relativeWidth (0.36) = 1.16 > 1.0 -> Must fail
+        // relativeX (0.80) + relativeWidth (0.36) = 1.16 > 1.0 -> Must fail with Figma message
         val outRight = saveFieldUseCase(
             documentId = "doc-1",
             signerId = "s-1",
@@ -94,7 +93,7 @@ class PdfPositioningAndCoordinatesTest {
             relativeHeight = 0.08f
         )
         assertTrue(outRight is AppResult.Error)
-        assertEquals("Campo fora dos limites da página", (outRight as AppResult.Error).message)
+        assertEquals("O campo precisa ficar dentro da página.", (outRight as AppResult.Error).message)
 
         // relativeY (-0.05) < 0.0 -> Must fail
         val outTop = saveFieldUseCase(
@@ -108,17 +107,24 @@ class PdfPositioningAndCoordinatesTest {
         )
         assertTrue(outTop is AppResult.Error)
 
-        // Valid coordinates -> Must succeed
+        // Valid coordinates with Rubrica (INITIALS) and AI suggestion metadata -> Must succeed
         val valid = saveFieldUseCase(
             documentId = "doc-1",
             signerId = "s-1",
-            pageNumber = 0,
+            pageNumber = 1,
             relativeX = 0.60f,
-            relativeY = 0.90f,
-            relativeWidth = 0.36f,
-            relativeHeight = 0.08f
+            relativeY = 0.85f,
+            relativeWidth = 0.24f,
+            relativeHeight = 0.07f,
+            fieldType = SignatureFieldType.INITIALS,
+            isAiSuggested = true,
+            aiContextHint = "perto de \"CONTRATANTE\""
         )
         assertTrue(valid is AppResult.Success)
+        val savedField = valid.getOrNull()!!
+        assertEquals(SignatureFieldType.INITIALS, savedField.fieldType)
+        assertTrue(savedField.isAiSuggested)
+        assertEquals("perto de \"CONTRATANTE\"", savedField.aiContextHint)
     }
 
     @Test

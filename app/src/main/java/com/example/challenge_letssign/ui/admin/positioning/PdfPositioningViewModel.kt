@@ -7,6 +7,7 @@ import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignatureFieldType
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.domain.usecase.document.DeleteSignatureFieldUseCase
@@ -18,12 +19,15 @@ import com.example.challenge_letssign.utils.PdfCoordinateConverter
 import com.example.challenge_letssign.utils.PdfPageRenderer
 import com.example.challenge_letssign.utils.RenderedPdfPage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 import javax.inject.Inject
 
 data class SignerColorStyle(
@@ -33,30 +37,51 @@ data class SignerColorStyle(
 )
 
 object SignerPalette {
-    // Cores s1, s2, s3 baseadas no components2.png ("Campos de assinatura - Uma cor por signatário")
+    // Cores s1, s2, s3 baseadas na Biblioteca LetsSign (color/signer-1, signer-2, signer-3)
     private val styles = listOf(
-        // s1: Violeta Primary
+        // s1: Violeta Primary (#6d3bf5)
         SignerColorStyle(
-            borderColor = LetsSignColors.Primary,
-            backgroundColor = LetsSignColors.VioletSoft,
-            textColor = LetsSignColors.Primary
+            borderColor = LetsSignColors.Signer1,
+            backgroundColor = LetsSignColors.Signer1Soft,
+            textColor = LetsSignColors.Signer1
         ),
-        // s2: Ink / Escuro
+        // s2: Ink / Escuro (#17123a)
         SignerColorStyle(
-            borderColor = LetsSignColors.Ink,
-            backgroundColor = Color(0xFFECEBF2),
-            textColor = LetsSignColors.Ink
+            borderColor = LetsSignColors.Signer2,
+            backgroundColor = LetsSignColors.Signer2Soft,
+            textColor = LetsSignColors.Signer2
         ),
-        // s3: Ciano / Teal
+        // s3: Ciano / Teal (#0a7886)
         SignerColorStyle(
-            borderColor = Color(0xFF0A6B78),
-            backgroundColor = Color(0xFFE3F5F8),
-            textColor = Color(0xFF0A6B78)
+            borderColor = LetsSignColors.Signer3,
+            backgroundColor = LetsSignColors.Signer3Soft,
+            textColor = LetsSignColors.Signer3
         )
     )
 
     fun styleForIndex(index: Int): SignerColorStyle =
         styles[index.coerceAtLeast(0) % styles.size]
+}
+
+data class AiFieldSuggestionItem(
+    val id: String,
+    val signerId: String,
+    val pageNumber: Int,
+    val relativeX: Float,
+    val relativeY: Float,
+    val relativeWidth: Float = PdfCoordinateConverter.DEFAULT_RELATIVE_WIDTH,
+    val relativeHeight: Float = PdfCoordinateConverter.DEFAULT_RELATIVE_HEIGHT,
+    val fieldType: SignatureFieldType = SignatureFieldType.SIGNATURE,
+    val contextHint: String = "perto de \"CONTRATANTE\""
+)
+
+enum class AiFieldsModalState {
+    NONE,
+    ANALYZING,
+    SUGGESTIONS,
+    REVIEWING_SINGLE,
+    NOTHING_FOUND,
+    ERROR
 }
 
 data class PdfPositioningUiState(
@@ -68,7 +93,18 @@ data class PdfPositioningUiState(
     val isLoadingPage: Boolean = true,
     val signers: List<DocumentSignerWithUser> = emptyList(),
     val selectedSignerId: String? = null,
+    val selectedFieldId: String? = null,
+    val isDraggingOutOfBounds: Boolean = false,
     val allFields: List<SignatureField> = emptyList(),
+    // Modal Bottom Sheet: Novo Doc Adicionar Campo
+    val isAddFieldSheetOpen: Boolean = false,
+    val addFieldPickerSignerId: String? = null,
+    // Fluxo de IA nos Campos (Etapa 4)
+    val aiModalState: AiFieldsModalState = AiFieldsModalState.NONE,
+    val aiSuggestedFields: List<AiFieldSuggestionItem> = emptyList(),
+    val reviewingAiFieldId: String? = null,
+    val reviewingSignerId: String? = null,
+    val reviewingFieldType: SignatureFieldType = SignatureFieldType.SIGNATURE,
     val snackbarMessage: String? = null,
     val isErrorSnackbar: Boolean = false,
     val isReadyForReview: Boolean = false
@@ -85,6 +121,12 @@ data class PdfPositioningUiState(
             val signersWithFields = allFields.map { it.signerId }.toSet()
             return signers.all { it.signer.id in signersWithFields }
         }
+
+    val distinctAiSuggestedPagesCount: Int
+        get() = aiSuggestedFields.map { it.pageNumber }.distinct().size.coerceAtLeast(1)
+
+    val reviewingAiSuggestion: AiFieldSuggestionItem?
+        get() = aiSuggestedFields.firstOrNull { it.id == reviewingAiFieldId }
 }
 
 @HiltViewModel
@@ -100,7 +142,11 @@ class PdfPositioningViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PdfPositioningUiState())
     val uiState: StateFlow<PdfPositioningUiState> = _uiState.asStateFlow()
 
+    var pageLoadingDelayMillis: Long = 0L
+    var aiAnalysisDelayMillis: Long = 2500L
+
     private var loadedDocumentId: String? = null
+    private var aiAnalysisJob: Job? = null
 
     fun loadDocument(documentId: String) {
         if (documentId.isBlank() || loadedDocumentId == documentId) return
@@ -126,7 +172,8 @@ class PdfPositioningViewModel @Inject constructor(
                     }
                     state.copy(
                         signers = signerList,
-                        selectedSignerId = nextSelected
+                        selectedSignerId = nextSelected,
+                        addFieldPickerSignerId = state.addFieldPickerSignerId ?: nextSelected
                     )
                 }
             }
@@ -134,13 +181,22 @@ class PdfPositioningViewModel @Inject constructor(
 
         viewModelScope.launch {
             documentRepository.observeSignatureFields(documentId).collect { fields ->
-                _uiState.update { it.copy(allFields = fields) }
+                _uiState.update { state ->
+                    val nextSelectedField = state.selectedFieldId?.takeIf { id -> fields.any { it.id == id } }
+                    state.copy(
+                        allFields = fields,
+                        selectedFieldId = nextSelectedField
+                    )
+                }
             }
         }
     }
 
     private suspend fun loadPdfFileAndRenderFirstPage(internalFileName: String) {
         _uiState.update { it.copy(isLoadingPage = true) }
+        if (pageLoadingDelayMillis > 0L) {
+            delay(pageLoadingDelayMillis)
+        }
         when (val fileResult = pdfStorageRepository.getPdfFile(internalFileName)) {
             is AppResult.Success -> {
                 _uiState.update { it.copy(pdfFile = fileResult.data) }
@@ -195,7 +251,62 @@ class PdfPositioningViewModel @Inject constructor(
     }
 
     fun onSelectSigner(signerId: String) {
-        _uiState.update { it.copy(selectedSignerId = signerId) }
+        _uiState.update {
+            it.copy(
+                selectedSignerId = signerId,
+                addFieldPickerSignerId = signerId
+            )
+        }
+    }
+
+    fun onSelectField(fieldId: String?) {
+        _uiState.update { state ->
+            val field = state.allFields.firstOrNull { it.id == fieldId }
+            state.copy(
+                selectedFieldId = fieldId,
+                selectedSignerId = field?.signerId ?: state.selectedSignerId
+            )
+        }
+    }
+
+    // --- Modal Bottom Sheet: Novo Doc Adicionar Campo ---
+
+    fun onOpenAddFieldSheet() {
+        if (!_uiState.value.isEditable) return
+        _uiState.update { state ->
+            state.copy(
+                isAddFieldSheetOpen = true,
+                aiModalState = AiFieldsModalState.NONE,
+                addFieldPickerSignerId = state.selectedSignerId ?: state.signers.firstOrNull()?.signer?.id
+            )
+        }
+    }
+
+    fun onDismissAddFieldSheet() {
+        _uiState.update { it.copy(isAddFieldSheetOpen = false) }
+    }
+
+    fun onSelectAddFieldPickerSigner(signerId: String) {
+        _uiState.update {
+            it.copy(
+                addFieldPickerSignerId = signerId,
+                selectedSignerId = signerId
+            )
+        }
+    }
+
+    fun onConfirmAddFieldFromSheet() {
+        val targetSignerId = _uiState.value.addFieldPickerSignerId
+            ?: _uiState.value.selectedSignerId
+            ?: _uiState.value.signers.firstOrNull()?.signer?.id
+            ?: return
+        _uiState.update {
+            it.copy(
+                selectedSignerId = targetSignerId,
+                isAddFieldSheetOpen = false
+            )
+        }
+        onAddSignatureFieldForSelectedSigner()
     }
 
     fun onAddSignatureFieldForSelectedSigner() {
@@ -205,10 +316,9 @@ class PdfPositioningViewModel @Inject constructor(
 
         val signerId = state.selectedSignerId ?: state.signers.firstOrNull()?.signer?.id ?: return
         val existingOnPage = state.currentPageFields.size
-        // Posiciona inicialmente de forma escalonada dentro dos limites da página
-        val offsetStep = (existingOnPage % 5) * 0.06f
-        val initialX = (0.32f).coerceIn(0f, 1f - PdfCoordinateConverter.DEFAULT_RELATIVE_WIDTH)
-        val initialY = (0.25f + offsetStep).coerceIn(0f, 1f - PdfCoordinateConverter.DEFAULT_RELATIVE_HEIGHT)
+        val offsetStep = (existingOnPage % 5) * 0.08f
+        val initialX = 0.30f.coerceIn(0f, 1f - PdfCoordinateConverter.DEFAULT_RELATIVE_WIDTH)
+        val initialY = (0.48f + offsetStep).coerceIn(0f, 1f - PdfCoordinateConverter.DEFAULT_RELATIVE_HEIGHT)
 
         viewModelScope.launch {
             when (
@@ -220,7 +330,11 @@ class PdfPositioningViewModel @Inject constructor(
                     relativeY = initialY
                 )
             ) {
-                is AppResult.Success -> Unit
+                is AppResult.Success -> {
+                    _uiState.update {
+                        it.copy(selectedFieldId = result.data.id)
+                    }
+                }
                 is AppResult.Error -> {
                     _uiState.update {
                         it.copy(
@@ -233,11 +347,213 @@ class PdfPositioningViewModel @Inject constructor(
         }
     }
 
+    // --- Fluxo de IA nos Campos (Novo Doc IA Analisando -> Sugestões -> Revisar Campo / Nada Encontrado / Falha) ---
+
+    fun onSuggestFieldsWithAiClick(
+        simulateNothingFound: Boolean = false,
+        simulateError: Boolean = false
+    ) {
+        if (!_uiState.value.isEditable) return
+        aiAnalysisJob?.cancel()
+        aiAnalysisJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    aiModalState = AiFieldsModalState.ANALYZING,
+                    isAddFieldSheetOpen = false
+                )
+            }
+
+            if (aiAnalysisDelayMillis > 0L) {
+                delay(aiAnalysisDelayMillis)
+            }
+
+            if (simulateError) {
+                _uiState.update { it.copy(aiModalState = AiFieldsModalState.ERROR) }
+                return@launch
+            }
+
+            val currentSigners = _uiState.value.signers
+            if (simulateNothingFound || currentSigners.isEmpty()) {
+                _uiState.update { it.copy(aiModalState = AiFieldsModalState.NOTHING_FOUND) }
+                return@launch
+            }
+
+            val totalPages = _uiState.value.totalPages.coerceAtLeast(1)
+            val mainPage = if (totalPages >= 2) 1 else 0
+            val lastPage = (totalPages - 1).coerceAtLeast(mainPage)
+
+            val generatedSuggestions = mutableListOf<AiFieldSuggestionItem>()
+            currentSigners.forEachIndexed { idx, signerItem ->
+                val hint = when (idx) {
+                    0 -> "perto de \"CONTRATANTE\""
+                    1 -> "perto de \"CONTRATADO\""
+                    else -> "perto de \"TESTEMUNHA\""
+                }
+                val relX = when (idx % 3) {
+                    0 -> 0.08f
+                    1 -> 0.54f
+                    else -> 0.31f
+                }
+                val relY = when (idx % 3) {
+                    0, 1 -> 0.68f
+                    else -> 0.82f
+                }
+                generatedSuggestions.add(
+                    AiFieldSuggestionItem(
+                        id = UUID.randomUUID().toString(),
+                        signerId = signerItem.signer.id,
+                        pageNumber = mainPage,
+                        relativeX = relX,
+                        relativeY = relY,
+                        fieldType = SignatureFieldType.SIGNATURE,
+                        contextHint = hint
+                    )
+                )
+                // Adiciona rubrica adicional nas páginas para os 2 primeiros signatários (totalizando até 5 campos sugeridos como no Figma)
+                if (idx < 2 && totalPages > 1) {
+                    generatedSuggestions.add(
+                        AiFieldSuggestionItem(
+                            id = UUID.randomUUID().toString(),
+                            signerId = signerItem.signer.id,
+                            pageNumber = if (idx == 0) lastPage else mainPage,
+                            relativeX = if (idx == 0) 0.08f else 0.54f,
+                            relativeY = 0.56f,
+                            relativeWidth = 0.24f,
+                            relativeHeight = 0.07f,
+                            fieldType = SignatureFieldType.INITIALS,
+                            contextHint = hint
+                        )
+                    )
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    aiModalState = AiFieldsModalState.SUGGESTIONS,
+                    aiSuggestedFields = generatedSuggestions
+                )
+            }
+        }
+    }
+
+    fun onCancelAiAnalysis() {
+        aiAnalysisJob?.cancel()
+        _uiState.update {
+            it.copy(
+                aiModalState = AiFieldsModalState.NONE,
+                reviewingAiFieldId = null
+            )
+        }
+    }
+
+    fun onOpenReviewSingleAiSuggestion(suggestionId: String) {
+        _uiState.update { state ->
+            val target = state.aiSuggestedFields.firstOrNull { it.id == suggestionId }
+                ?: return@update state
+            state.copy(
+                aiModalState = AiFieldsModalState.REVIEWING_SINGLE,
+                reviewingAiFieldId = target.id,
+                reviewingSignerId = target.signerId,
+                reviewingFieldType = target.fieldType
+            )
+        }
+    }
+
+    fun onChangeReviewingSigner(signerId: String) {
+        _uiState.update { it.copy(reviewingSignerId = signerId) }
+    }
+
+    fun onChangeReviewingFieldType(fieldType: SignatureFieldType) {
+        _uiState.update { it.copy(reviewingFieldType = fieldType) }
+    }
+
+    fun onAcceptSingleReviewedAiSuggestion() {
+        _uiState.update { state ->
+            val targetId = state.reviewingAiFieldId ?: return@update state
+            val updatedList = state.aiSuggestedFields.map { item ->
+                if (item.id == targetId) {
+                    item.copy(
+                        signerId = state.reviewingSignerId ?: item.signerId,
+                        fieldType = state.reviewingFieldType
+                    )
+                } else {
+                    item
+                }
+            }
+            state.copy(
+                aiSuggestedFields = updatedList,
+                aiModalState = AiFieldsModalState.SUGGESTIONS,
+                reviewingAiFieldId = null
+            )
+        }
+    }
+
+    fun onDiscardSingleReviewedAiSuggestion() {
+        _uiState.update { state ->
+            val targetId = state.reviewingAiFieldId ?: return@update state
+            val remaining = state.aiSuggestedFields.filterNot { it.id == targetId }
+            state.copy(
+                aiSuggestedFields = remaining,
+                aiModalState = if (remaining.isEmpty()) AiFieldsModalState.NONE else AiFieldsModalState.SUGGESTIONS,
+                reviewingAiFieldId = null
+            )
+        }
+    }
+
+    fun onAcceptAllAiSuggestions() {
+        val state = _uiState.value
+        val doc = state.document ?: return
+        val suggestions = state.aiSuggestedFields
+        if (suggestions.isEmpty()) {
+            onCancelAiAnalysis()
+            return
+        }
+
+        viewModelScope.launch {
+            for (suggestion in suggestions) {
+                saveSignatureFieldUseCase(
+                    documentId = doc.id,
+                    signerId = suggestion.signerId,
+                    pageNumber = suggestion.pageNumber,
+                    relativeX = suggestion.relativeX,
+                    relativeY = suggestion.relativeY,
+                    relativeWidth = suggestion.relativeWidth,
+                    relativeHeight = suggestion.relativeHeight,
+                    fieldType = suggestion.fieldType,
+                    isAiSuggested = true,
+                    aiContextHint = suggestion.contextHint
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    aiModalState = AiFieldsModalState.NONE,
+                    aiSuggestedFields = emptyList(),
+                    reviewingAiFieldId = null
+                )
+            }
+        }
+    }
+
+    fun onUpdateDraggingOutOfBounds(isOutOfBounds: Boolean) {
+        _uiState.update { state ->
+            if (state.isDraggingOutOfBounds == isOutOfBounds) return@update state
+            state.copy(
+                isDraggingOutOfBounds = isOutOfBounds,
+                snackbarMessage = if (isOutOfBounds) {
+                    SaveSignatureFieldUseCase.OUT_OF_BOUNDS_MESSAGE
+                } else {
+                    state.snackbarMessage
+                },
+                isErrorSnackbar = if (isOutOfBounds) true else state.isErrorSnackbar
+            )
+        }
+    }
+
     /**
      * Matemática de Coordenadas (CRÍTICO - Milestone 5):
      * Ao dar drop na caixa, captura dropX, dropY, width, height em pixels da tela,
      * converte para relativo (relativeX = dropX / viewWidth) e salva no SignatureFieldEntity.
-     * Se sair dos limites (Regra 2), bloqueia o drop e exibe "Campo fora dos limites da página".
+     * Se sair dos limites (Regra 2), bloqueia o drop e exibe a snackbar de erro.
      */
     fun onDropSignatureFieldInPixels(
         field: SignatureField,
@@ -264,12 +580,15 @@ class PdfPositioningViewModel @Inject constructor(
         if (!PdfCoordinateConverter.isWithinPageBounds(relativeCoords)) {
             _uiState.update {
                 it.copy(
-                    snackbarMessage = "Campo fora dos limites da página",
+                    isDraggingOutOfBounds = false,
+                    snackbarMessage = SaveSignatureFieldUseCase.OUT_OF_BOUNDS_MESSAGE,
                     isErrorSnackbar = true
                 )
             }
             return false
         }
+
+        _uiState.update { it.copy(isDraggingOutOfBounds = false) }
 
         viewModelScope.launch {
             val saveRes = saveSignatureFieldUseCase(
@@ -280,7 +599,10 @@ class PdfPositioningViewModel @Inject constructor(
                 relativeX = relativeCoords.relativeX,
                 relativeY = relativeCoords.relativeY,
                 relativeWidth = relativeCoords.relativeWidth,
-                relativeHeight = relativeCoords.relativeHeight
+                relativeHeight = relativeCoords.relativeHeight,
+                fieldType = field.fieldType,
+                isAiSuggested = field.isAiSuggested,
+                aiContextHint = field.aiContextHint
             )
             if (saveRes is AppResult.Error) {
                 _uiState.update {
@@ -307,12 +629,22 @@ class PdfPositioningViewModel @Inject constructor(
                         isErrorSnackbar = true
                     )
                 }
+            } else {
+                _uiState.update { state ->
+                    state.copy(
+                        selectedFieldId = if (state.selectedFieldId == fieldId) null else state.selectedFieldId
+                    )
+                }
             }
         }
     }
 
-    fun onContinueToReview() {
+    fun onContinueToReview(allowWithPendingFields: Boolean = false) {
         val docId = _uiState.value.document?.id ?: return
+        if (allowWithPendingFields) {
+            _uiState.update { it.copy(isReadyForReview = true) }
+            return
+        }
         viewModelScope.launch {
             when (val validation = validateDocumentPositioningUseCase(docId)) {
                 is AppResult.Success -> {
@@ -336,5 +668,10 @@ class PdfPositioningViewModel @Inject constructor(
 
     fun onDismissSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    override fun onCleared() {
+        aiAnalysisJob?.cancel()
+        super.onCleared()
     }
 }
