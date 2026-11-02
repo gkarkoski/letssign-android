@@ -5,9 +5,12 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Relation
+import com.example.challenge_letssign.domain.model.AdditionalAuthOption
 import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.SignatureStatus
+import com.example.challenge_letssign.domain.model.SignerAuthMethod
+import com.example.challenge_letssign.domain.model.SignerDeliveryChannel
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 
 @Entity(
@@ -38,7 +41,12 @@ data class DocumentSignerCrossRef(
     val roleClass: SignerRoleClass,
     val status: SignatureStatus,
     val signedAt: Long? = null,
-    val signatureIp: String? = null
+    val signatureIp: String? = null,
+    val deliveryChannel: SignerDeliveryChannel = SignerDeliveryChannel.EMAIL,
+    val authMethod: SignerAuthMethod = SignerAuthMethod.EMAIL,
+    val additionalAuths: List<AdditionalAuthOption> = emptyList(),
+    val language: String = "Português",
+    val colorIndex: Int = 0
 )
 
 data class DocumentSignerWithUserEntity(
@@ -57,7 +65,12 @@ fun DocumentSignerCrossRef.toDomain(): DocumentSigner = DocumentSigner(
     roleClass = roleClass,
     status = status,
     signedAt = signedAt,
-    signatureIp = signatureIp
+    signatureIp = signatureIp,
+    deliveryChannel = deliveryChannel,
+    authMethod = authMethod,
+    additionalAuths = additionalAuths,
+    language = language,
+    colorIndex = colorIndex
 )
 
 fun DocumentSigner.toEntity(): DocumentSignerCrossRef = DocumentSignerCrossRef(
@@ -66,7 +79,12 @@ fun DocumentSigner.toEntity(): DocumentSignerCrossRef = DocumentSignerCrossRef(
     roleClass = roleClass,
     status = status,
     signedAt = signedAt,
-    signatureIp = signatureIp
+    signatureIp = signatureIp,
+    deliveryChannel = deliveryChannel,
+    authMethod = authMethod,
+    additionalAuths = additionalAuths,
+    language = language,
+    colorIndex = colorIndex
 )
 
 fun DocumentSignerWithUserEntity.toDomain(): DocumentSignerWithUser = DocumentSignerWithUser(

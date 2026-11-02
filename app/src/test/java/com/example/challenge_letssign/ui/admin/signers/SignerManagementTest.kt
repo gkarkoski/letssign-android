@@ -152,6 +152,14 @@ class SignerManagementTest {
         override suspend fun login(email: String, password: String): AppResult<User> =
             AppResult.Error("Not used")
 
+        override suspend fun requestLoginCode(email: String): AppResult<User> =
+            AppResult.Error("Not used")
+
+        override suspend fun verifyLoginCode(
+            email: String,
+            code: String
+        ): AppResult<User> = AppResult.Error("Not used")
+
         override suspend fun getUserById(userId: String): AppResult<User> {
             val user = usersFlow.value.firstOrNull { it.id == userId }
                 ?: return AppResult.Error("Não encontrado")

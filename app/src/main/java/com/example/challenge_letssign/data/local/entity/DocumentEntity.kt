@@ -30,7 +30,11 @@ data class DocumentEntity(
     val createdAt: Long,
     val ownerAdminId: String,
     val sentAt: Long? = null,
-    val inviteMessage: String? = null
+    val inviteMessage: String? = null,
+    val pageCount: Int = 1,
+    val fileSizeBytes: Long = 0L,
+    val deadlineAt: Long? = null,
+    val originalDisplayName: String = ""
 )
 
 fun DocumentEntity.toDomain(): Document = Document(
@@ -41,7 +45,11 @@ fun DocumentEntity.toDomain(): Document = Document(
     createdAt = createdAt,
     ownerAdminId = ownerAdminId,
     sentAt = sentAt,
-    inviteMessage = inviteMessage
+    inviteMessage = inviteMessage,
+    pageCount = pageCount,
+    fileSizeBytes = fileSizeBytes,
+    deadlineAt = deadlineAt,
+    originalDisplayName = originalDisplayName
 )
 
 fun Document.toEntity(): DocumentEntity = DocumentEntity(
@@ -52,5 +60,9 @@ fun Document.toEntity(): DocumentEntity = DocumentEntity(
     createdAt = createdAt,
     ownerAdminId = ownerAdminId,
     sentAt = sentAt,
-    inviteMessage = inviteMessage
+    inviteMessage = inviteMessage,
+    pageCount = pageCount,
+    fileSizeBytes = fileSizeBytes,
+    deadlineAt = deadlineAt,
+    originalDisplayName = originalDisplayName
 )

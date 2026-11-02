@@ -2,6 +2,8 @@ package com.example.challenge_letssign
 
 import android.app.Application
 import com.example.challenge_letssign.data.di.IoDispatcher
+import com.example.challenge_letssign.data.local.dao.DocumentDao
+import com.example.challenge_letssign.data.local.dao.SignatureFieldDao
 import com.example.challenge_letssign.data.local.dao.UserDao
 import com.example.challenge_letssign.data.local.seed.DatabaseSeeder
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -19,6 +21,12 @@ class LetsSignApplication : Application() {
     lateinit var userDao: UserDao
 
     @Inject
+    lateinit var documentDao: DocumentDao
+
+    @Inject
+    lateinit var signatureFieldDao: SignatureFieldDao
+
+    @Inject
     @IoDispatcher
     lateinit var ioDispatcher: CoroutineDispatcher
 
@@ -31,9 +39,14 @@ class LetsSignApplication : Application() {
         // Obrigatório inicializar o motor PDFBox na classe base Application
         PDFBoxResourceLoader.init(applicationContext)
 
-        // Garante a inserção dos dados mockados (1 Admin, 2 Signatários) em Dispatchers.IO
+        // Garante a inserção dos dados mockados (Admin, 6 Signatários do Figma e Documentos exemplo) em Dispatchers.IO
         applicationScope.launch {
-            DatabaseSeeder.seedIfNeeded(userDao)
+            DatabaseSeeder.seedIfNeeded(
+                userDao = userDao,
+                documentDao = documentDao,
+                signatureFieldDao = signatureFieldDao,
+                filesDir = applicationContext.filesDir
+            )
         }
     }
 }

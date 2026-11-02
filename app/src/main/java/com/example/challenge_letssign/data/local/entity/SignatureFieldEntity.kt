@@ -5,6 +5,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignatureFieldType
 
 @Entity(
     tableName = "signature_fields",
@@ -36,7 +37,10 @@ data class SignatureFieldEntity(
     val relativeX: Float,
     val relativeY: Float,
     val relativeWidth: Float,
-    val relativeHeight: Float
+    val relativeHeight: Float,
+    val fieldType: SignatureFieldType = SignatureFieldType.SIGNATURE,
+    val isAiSuggested: Boolean = false,
+    val aiContextHint: String? = null
 )
 
 fun SignatureFieldEntity.toDomain(): SignatureField = SignatureField(
@@ -47,7 +51,10 @@ fun SignatureFieldEntity.toDomain(): SignatureField = SignatureField(
     relativeX = relativeX,
     relativeY = relativeY,
     relativeWidth = relativeWidth,
-    relativeHeight = relativeHeight
+    relativeHeight = relativeHeight,
+    fieldType = fieldType,
+    isAiSuggested = isAiSuggested,
+    aiContextHint = aiContextHint
 )
 
 fun SignatureField.toEntity(): SignatureFieldEntity = SignatureFieldEntity(
@@ -58,5 +65,8 @@ fun SignatureField.toEntity(): SignatureFieldEntity = SignatureFieldEntity(
     relativeX = relativeX,
     relativeY = relativeY,
     relativeWidth = relativeWidth,
-    relativeHeight = relativeHeight
+    relativeHeight = relativeHeight,
+    fieldType = fieldType,
+    isAiSuggested = isAiSuggested,
+    aiContextHint = aiContextHint
 )
