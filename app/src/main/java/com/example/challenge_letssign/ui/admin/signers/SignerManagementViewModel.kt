@@ -2,6 +2,7 @@ package com.example.challenge_letssign.ui.admin.signers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.challenge_letssign.domain.model.PersonType
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.usecase.signer.DeleteSignerUseCase
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignersUseCase
@@ -20,15 +21,15 @@ data class SignerManagementUiState(
     val searchQuery: String = "",
     val isFormVisible: Boolean = false,
     val editingSignerId: String? = null,
+    val personType: PersonType = PersonType.FISICA,
+    val cpfCnpj: String = "",
     val name: String = "",
     val email: String = "",
-    val phone: String = "",
-    val password: String = "123456",
-    val isPasswordVisible: Boolean = false,
+    val birthDate: String = "",
+    val cpfCnpjError: String? = null,
     val nameError: String? = null,
     val emailError: String? = null,
-    val phoneError: String? = null,
-    val passwordError: String? = null,
+    val birthDateError: String? = null,
     val isSaving: Boolean = false,
     val signerPendingDeletion: User? = null,
     val snackbarMessage: String? = null,
@@ -38,13 +39,25 @@ data class SignerManagementUiState(
         get() {
             val q = searchQuery.trim().lowercase()
             if (q.isEmpty()) return allSigners
-            return allSigners.filter {
-                it.name.lowercase().contains(q) || it.email.lowercase().contains(q)
+            val qDigits = q.filter { it.isDigit() }
+            return allSigners.filter { user ->
+                user.name.lowercase().contains(q) ||
+                    user.email.lowercase().contains(q) ||
+                    user.cpfCnpj.lowercase().contains(q) ||
+                    (qDigits.isNotEmpty() && user.cpfCnpj.filter { it.isDigit() }.contains(qDigits)) ||
+                    user.groupName.lowercase().contains(q)
             }
         }
 
-    val isEmailValidFormat: Boolean
-        get() = email.trim().isNotBlank() && SaveSignerUseCase.EMAIL_REGEX.matches(email.trim())
+    val validationErrorCount: Int
+        get() = listOfNotNull(cpfCnpjError, nameError, emailError, birthDateError).size
+
+    val formSummaryErrorBanner: String?
+        get() = when {
+            validationErrorCount <= 0 -> null
+            validationErrorCount == 1 -> "Corrija 1 campo para salvar o contato."
+            else -> "Corrija $validationErrorCount campos para salvar o contato."
+        }
 }
 
 @HiltViewModel
@@ -69,20 +82,24 @@ class SignerManagementViewModel @Inject constructor(
         _uiState.update { it.copy(searchQuery = query) }
     }
 
+    fun onClearSearch() {
+        _uiState.update { it.copy(searchQuery = "") }
+    }
+
     fun onOpenCreateForm() {
         _uiState.update {
             it.copy(
                 isFormVisible = true,
                 editingSignerId = null,
+                personType = PersonType.FISICA,
+                cpfCnpj = "",
                 name = "",
                 email = "",
-                phone = "",
-                password = "123456",
-                isPasswordVisible = false,
+                birthDate = "",
+                cpfCnpjError = null,
                 nameError = null,
                 emailError = null,
-                phoneError = null,
-                passwordError = null
+                birthDateError = null
             )
         }
     }
@@ -92,15 +109,15 @@ class SignerManagementViewModel @Inject constructor(
             it.copy(
                 isFormVisible = true,
                 editingSignerId = signer.id,
+                personType = signer.personType,
+                cpfCnpj = signer.cpfCnpj,
                 name = signer.name,
                 email = signer.email,
-                phone = signer.phone,
-                password = signer.password,
-                isPasswordVisible = false,
+                birthDate = signer.birthDate,
+                cpfCnpjError = null,
                 nameError = null,
                 emailError = null,
-                phoneError = null,
-                passwordError = null
+                birthDateError = null
             )
         }
     }
@@ -109,12 +126,31 @@ class SignerManagementViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isFormVisible = false,
+                editingSignerId = null,
+                cpfCnpjError = null,
                 nameError = null,
                 emailError = null,
-                phoneError = null,
-                passwordError = null
+                birthDateError = null
             )
         }
+    }
+
+    fun onPersonTypeChanged(newType: PersonType) {
+        // Na edição o Tipo não muda (conforme Contato Editar.png)
+        if (_uiState.value.editingSignerId != null) return
+        _uiState.update {
+            it.copy(
+                personType = newType,
+                cpfCnpjError = null,
+                nameError = null,
+                emailError = null,
+                birthDateError = null
+            )
+        }
+    }
+
+    fun onCpfCnpjChanged(newValue: String) {
+        _uiState.update { it.copy(cpfCnpj = newValue, cpfCnpjError = null) }
     }
 
     fun onNameChanged(newName: String) {
@@ -125,16 +161,8 @@ class SignerManagementViewModel @Inject constructor(
         _uiState.update { it.copy(email = newEmail, emailError = null) }
     }
 
-    fun onPhoneChanged(newPhone: String) {
-        _uiState.update { it.copy(phone = newPhone, phoneError = null) }
-    }
-
-    fun onPasswordChanged(newPassword: String) {
-        _uiState.update { it.copy(password = newPassword, passwordError = null) }
-    }
-
-    fun onTogglePasswordVisibility() {
-        _uiState.update { it.copy(isPasswordVisible = !it.isPasswordVisible) }
+    fun onBirthDateChanged(newDate: String) {
+        _uiState.update { it.copy(birthDate = newDate, birthDateError = null) }
     }
 
     fun onSaveSigner() {
@@ -143,39 +171,43 @@ class SignerManagementViewModel @Inject constructor(
 
         val trimmedName = current.name.trim()
         val trimmedEmail = current.email.trim()
-        val trimmedPhone = current.phone.trim()
-        val trimmedPassword = current.password.trim()
+        val digitsCpfCnpj = current.cpfCnpj.filter { it.isDigit() }
+        val trimmedBirthDate = current.birthDate.trim()
 
+        var cpfCnpjError: String? = null
         var nameError: String? = null
         var emailError: String? = null
-        var phoneError: String? = null
-        var passwordError: String? = null
-        var hasError = false
+        var birthDateError: String? = null
+
+        if (current.personType == PersonType.FISICA) {
+            if (digitsCpfCnpj.length != 11) {
+                cpfCnpjError = SaveSignerUseCase.CPF_ERROR_MESSAGE
+            }
+        } else {
+            if (digitsCpfCnpj.length != 14) {
+                cpfCnpjError = SaveSignerUseCase.CNPJ_ERROR_MESSAGE
+            }
+        }
 
         if (trimmedName.isBlank()) {
-            nameError = "Informe o nome completo do signatário."
-            hasError = true
-        }
-        if (trimmedEmail.isBlank() || !SaveSignerUseCase.EMAIL_REGEX.matches(trimmedEmail)) {
-            emailError = "E-mail inválido. Confira o formato."
-            hasError = true
-        }
-        if (trimmedPhone.isBlank()) {
-            phoneError = "Informe o telefone do signatário."
-            hasError = true
-        }
-        if (trimmedPassword.isBlank()) {
-            passwordError = "Informe uma senha de acesso para o signatário."
-            hasError = true
+            nameError = SaveSignerUseCase.NAME_ERROR_MESSAGE
         }
 
-        if (hasError) {
+        if (trimmedEmail.isBlank() || !SaveSignerUseCase.EMAIL_REGEX.matches(trimmedEmail)) {
+            emailError = SaveSignerUseCase.EMAIL_ERROR_MESSAGE
+        }
+
+        if (current.personType == PersonType.FISICA && !SaveSignerUseCase.isValidBirthDate(trimmedBirthDate)) {
+            birthDateError = SaveSignerUseCase.BIRTH_DATE_ERROR_MESSAGE
+        }
+
+        if (cpfCnpjError != null || nameError != null || emailError != null || birthDateError != null) {
             _uiState.update {
                 it.copy(
+                    cpfCnpjError = cpfCnpjError,
                     nameError = nameError,
                     emailError = emailError,
-                    phoneError = phoneError,
-                    passwordError = passwordError
+                    birthDateError = birthDateError
                 )
             }
             return
@@ -187,10 +219,11 @@ class SignerManagementViewModel @Inject constructor(
             when (
                 val result = saveSignerUseCase(
                     signerId = current.editingSignerId,
+                    personType = current.personType,
+                    cpfCnpj = current.cpfCnpj,
                     name = trimmedName,
                     email = trimmedEmail,
-                    phone = trimmedPhone,
-                    password = trimmedPassword
+                    birthDate = trimmedBirthDate
                 )
             ) {
                 is AppResult.Success -> {
@@ -199,7 +232,7 @@ class SignerManagementViewModel @Inject constructor(
                             isSaving = false,
                             isFormVisible = false,
                             editingSignerId = null,
-                            snackbarMessage = "Signatário salvo",
+                            snackbarMessage = "Contato salvo com sucesso.",
                             isErrorSnackbar = false
                         )
                     }
@@ -211,6 +244,26 @@ class SignerManagementViewModel @Inject constructor(
                             emailError = result.message
                         )
                     }
+                }
+            }
+        }
+    }
+
+    fun onDeleteEditingSigner() {
+        val editingId = _uiState.value.editingSignerId ?: return
+        val target = _uiState.value.allSigners.firstOrNull { it.id == editingId }
+        if (target != null) {
+            _uiState.update { it.copy(signerPendingDeletion = target) }
+        } else {
+            viewModelScope.launch {
+                deleteSignerUseCase(editingId)
+                _uiState.update {
+                    it.copy(
+                        isFormVisible = false,
+                        editingSignerId = null,
+                        snackbarMessage = "Contato excluído.",
+                        isErrorSnackbar = false
+                    )
                 }
             }
         }
@@ -232,7 +285,9 @@ class SignerManagementViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             signerPendingDeletion = null,
-                            snackbarMessage = "Signatário excluído",
+                            isFormVisible = false,
+                            editingSignerId = null,
+                            snackbarMessage = "Contato excluído.",
                             isErrorSnackbar = false
                         )
                     }
