@@ -142,6 +142,14 @@ fun LetsSignNavHost(
                 },
                 onDocumentClick = { documentId ->
                     navController.navigate(LetsSignRoutes.documentDetails(documentId))
+                },
+                onSignDocumentClick = { documentId ->
+                    navController.navigate(
+                        LetsSignRoutes.signerDocumentSign(
+                            documentId = documentId,
+                            signerId = com.example.challenge_letssign.data.local.seed.DatabaseSeeder.MOCK_SIGNER_2_ID
+                        )
+                    )
                 }
             )
         }
@@ -206,6 +214,11 @@ fun LetsSignNavHost(
                 },
                 onPreviewDocumentPdf = {
                     navController.popBackStack()
+                },
+                onTrackSentDocument = { docId ->
+                    navController.navigate(LetsSignRoutes.documentDetails(docId)) {
+                        popUpTo(LetsSignRoutes.ADMIN_DASHBOARD) { inclusive = false }
+                    }
                 },
                 onDocumentSentSuccess = {
                     navController.popBackStack(
