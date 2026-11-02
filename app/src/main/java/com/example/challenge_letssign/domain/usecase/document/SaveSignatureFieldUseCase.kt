@@ -2,6 +2,7 @@ package com.example.challenge_letssign.domain.usecase.document
 
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignatureFieldType
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.utils.AppResult
 import com.example.challenge_letssign.utils.PdfCoordinateConverter
@@ -19,7 +20,10 @@ class SaveSignatureFieldUseCase @Inject constructor(
         relativeX: Float,
         relativeY: Float,
         relativeWidth: Float = PdfCoordinateConverter.DEFAULT_RELATIVE_WIDTH,
-        relativeHeight: Float = PdfCoordinateConverter.DEFAULT_RELATIVE_HEIGHT
+        relativeHeight: Float = PdfCoordinateConverter.DEFAULT_RELATIVE_HEIGHT,
+        fieldType: SignatureFieldType = SignatureFieldType.SIGNATURE,
+        isAiSuggested: Boolean = false,
+        aiContextHint: String? = null
     ): AppResult<SignatureField> {
         if (documentId.isBlank() || signerId.isBlank()) {
             return AppResult.Error("Documento ou signatário inválido.")
@@ -36,7 +40,7 @@ class SaveSignatureFieldUseCase @Inject constructor(
 
         // Regra 2 (Limites do PDF): relativeX + relativeWidth <= 1.0 e relativeY + relativeHeight <= 1.0
         if (!PdfCoordinateConverter.isWithinPageBounds(relativeX, relativeY, relativeWidth, relativeHeight)) {
-            return AppResult.Error("Campo fora dos limites da página")
+            return AppResult.Error(OUT_OF_BOUNDS_MESSAGE)
         }
 
         val normalizedX = relativeX.coerceIn(0f, 1f - relativeWidth)
@@ -50,8 +54,15 @@ class SaveSignatureFieldUseCase @Inject constructor(
             relativeX = normalizedX,
             relativeY = normalizedY,
             relativeWidth = relativeWidth,
-            relativeHeight = relativeHeight
+            relativeHeight = relativeHeight,
+            fieldType = fieldType,
+            isAiSuggested = isAiSuggested,
+            aiContextHint = aiContextHint
         )
         return documentRepository.saveSignatureField(field)
+    }
+
+    companion object {
+        const val OUT_OF_BOUNDS_MESSAGE = "O campo precisa ficar dentro da página."
     }
 }
