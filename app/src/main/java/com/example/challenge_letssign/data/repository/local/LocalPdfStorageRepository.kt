@@ -35,6 +35,36 @@ class LocalPdfStorageRepository @Inject constructor(
         uriString: String,
         fallbackName: String?
     ): AppResult<ImportedPdfFile> = withContext(ioDispatcher) {
+        if (uriString == SAMPLE_CORRUPTED_PDF_URI) {
+            val badName = fallbackName ?: "relatorio-final.pdf"
+            return@withContext AppResult.Error(
+                "Não foi possível processar $badName. Escolha outro arquivo PDF."
+            )
+        }
+        if (uriString == SAMPLE_VALID_PDF_URI) {
+            val seedFile = com.example.challenge_letssign.data.local.seed.DatabaseSeeder
+                .ensureSeedPdfFileExists(context.filesDir)
+            val internalFileName = "doc_${UUID.randomUUID()}.pdf"
+            val destFile = File(context.filesDir, internalFileName)
+            return@withContext try {
+                seedFile.copyTo(destFile, overwrite = true)
+                val pages = runCatching { validatePdfAndCountPages(destFile) }.getOrDefault(6).coerceAtLeast(1)
+                AppResult.Success(
+                    ImportedPdfFile(
+                        internalFileName = internalFileName,
+                        originalDisplayName = fallbackName ?: "contrato-servicos.pdf",
+                        pageCount = pages,
+                        fileSizeBytes = 1_887_436L
+                    )
+                )
+            } catch (e: Exception) {
+                AppResult.Error(
+                    message = "Não foi possível processar contrato-servicos.pdf. Escolha outro arquivo PDF.",
+                    cause = e
+                )
+            }
+        }
+
         val uri = Uri.parse(uriString)
         val displayName = resolveDisplayName(uri) ?: fallbackName ?: "documento.pdf"
         val internalFileName = "doc_${UUID.randomUUID()}.pdf"
@@ -234,5 +264,10 @@ class LocalPdfStorageRepository @Inject constructor(
                 renderer.pageCount
             }
         }
+    }
+
+    companion object {
+        const val SAMPLE_VALID_PDF_URI = "sample://contrato-servicos.pdf"
+        const val SAMPLE_CORRUPTED_PDF_URI = "sample://relatorio-final.pdf"
     }
 }
