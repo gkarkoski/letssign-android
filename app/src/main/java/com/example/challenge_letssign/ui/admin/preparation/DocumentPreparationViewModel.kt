@@ -6,15 +6,18 @@ import com.example.challenge_letssign.domain.model.AdditionalAuthOption
 import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.ImportedPdfFile
+import com.example.challenge_letssign.domain.model.PersonType
 import com.example.challenge_letssign.domain.model.SignerAuthMethod
 import com.example.challenge_letssign.domain.model.SignerDeliveryChannel
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.model.User
+import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.usecase.document.ImportPdfUseCase
 import com.example.challenge_letssign.domain.usecase.document.PrepareDraftDocumentUseCase
 import com.example.challenge_letssign.domain.usecase.document.SelectedSignerAssignment
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignersUseCase
+import com.example.challenge_letssign.domain.usecase.signer.SaveSignerUseCase
 import com.example.challenge_letssign.utils.AppResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -80,11 +83,23 @@ data class DocumentPreparationUiState(
     val replacingSignerId: String? = null,
     val pickerSearchQuery: String = "",
     val pickerSelectedIds: Set<String> = emptySet(),
+    // Cadastrar novo contato no meio do processo (novo_doc_selecionar_signatarios.png)
+    val isInlineNewContactDialogOpen: Boolean = false,
+    val newContactPersonType: PersonType = PersonType.FISICA,
+    val newContactCpfCnpj: String = "",
+    val newContactName: String = "",
+    val newContactEmail: String = "",
+    val newContactBirthDate: String = "",
+    val newContactError: String? = null,
     // Detecção de Signatários com IA (Etapa 2)
     val isAiDetectingSigners: Boolean = false,
     val isReviewingAiSigners: Boolean = false,
     val aiSuggestedSigners: List<AiSuggestedSignerItem> = emptyList(),
-    // Envio e Autenticação (Etapa 3)
+    // Envio e Autenticação Geral para todos os usuários (Etapa 3 - novo_doc_envio_e_autenticacao.png)
+    val globalDeliveryChannel: SignerDeliveryChannel = SignerDeliveryChannel.EMAIL,
+    val globalAuthMethod: SignerAuthMethod = SignerAuthMethod.EMAIL,
+    val globalAdditionalAuths: List<AdditionalAuthOption> = emptyList(),
+    val globalLanguage: String = "Português",
     val expandedStep3SignerId: String? = null,
     val activeStep3Sheet: Step3ModalSheet? = null,
     val isSavingDraft: Boolean = false,
@@ -139,8 +154,35 @@ class DocumentPreparationViewModel @Inject constructor(
     observeSignersUseCase: ObserveSignersUseCase,
     private val importPdfUseCase: ImportPdfUseCase,
     private val prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val saveSignerUseCase: SaveSignerUseCase
 ) : ViewModel() {
+
+    constructor(
+        observeSignersUseCase: ObserveSignersUseCase,
+        importPdfUseCase: ImportPdfUseCase,
+        prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
+        documentRepository: DocumentRepository
+    ) : this(
+        observeSignersUseCase = observeSignersUseCase,
+        importPdfUseCase = importPdfUseCase,
+        prepareDraftDocumentUseCase = prepareDraftDocumentUseCase,
+        documentRepository = documentRepository,
+        saveSignerUseCase = SaveSignerUseCase(
+            object : com.example.challenge_letssign.domain.repository.UserRepository {
+                override suspend fun login(email: String, password: String) = AppResult.Error("")
+                override suspend fun requestLoginCode(email: String) = AppResult.Error("")
+                override suspend fun verifyLoginCode(email: String, code: String) = AppResult.Error("")
+                override suspend fun getUserById(userId: String) = AppResult.Error("")
+                override suspend fun getUserByEmail(email: String) = AppResult.Success(null)
+                override fun observeSigners() = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+                override fun observeUsersByRole(role: UserRole) = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+                override suspend fun createUser(user: User) = AppResult.Success(user)
+                override suspend fun updateUser(user: User) = AppResult.Success(user)
+                override suspend fun deleteUser(userId: String) = AppResult.Success(Unit)
+            }
+        )
+    )
 
     private val _uiState = MutableStateFlow(DocumentPreparationUiState())
     val uiState: StateFlow<DocumentPreparationUiState> = _uiState.asStateFlow()
@@ -579,47 +621,61 @@ class DocumentPreparationViewModel @Inject constructor(
         }
     }
 
-    fun onOpenDeliveryLinkSheet(signerId: String) {
+    fun onOpenDeliveryLinkSheet(signerId: String = "GLOBAL") {
         _uiState.update {
             it.copy(activeStep3Sheet = Step3ModalSheet.DeliveryLinkSheet(signerId))
         }
     }
 
-    fun onSelectDeliveryChannel(signerId: String, channel: SignerDeliveryChannel) {
+    fun onSelectDeliveryChannel(signerId: String = "GLOBAL", channel: SignerDeliveryChannel) {
         _uiState.update { state ->
             state.copy(
+                globalDeliveryChannel = channel,
                 assignedSigners = state.assignedSigners.map { item ->
-                    if (item.user.id == signerId) item.copy(deliveryChannel = channel) else item
+                    if (signerId == "GLOBAL" || item.user.id == signerId) {
+                        item.copy(deliveryChannel = channel)
+                    } else {
+                        item
+                    }
                 },
                 activeStep3Sheet = null
             )
         }
     }
 
-    fun onOpenAuthMethodSheet(signerId: String) {
+    fun onOpenAuthMethodSheet(signerId: String = "GLOBAL") {
         _uiState.update {
             it.copy(activeStep3Sheet = Step3ModalSheet.AuthMethodSheet(signerId))
         }
     }
 
-    fun onSelectAuthMethod(signerId: String, method: SignerAuthMethod) {
+    fun onSelectAuthMethod(signerId: String = "GLOBAL", method: SignerAuthMethod) {
         _uiState.update { state ->
             state.copy(
+                globalAuthMethod = method,
                 assignedSigners = state.assignedSigners.map { item ->
-                    if (item.user.id == signerId) item.copy(authMethod = method) else item
+                    if (signerId == "GLOBAL" || item.user.id == signerId) {
+                        item.copy(authMethod = method)
+                    } else {
+                        item
+                    }
                 },
                 activeStep3Sheet = null
             )
         }
     }
 
-    fun onOpenAdditionalAuthsSheet(signerId: String) {
+    fun onOpenAdditionalAuthsSheet(signerId: String = "GLOBAL") {
         _uiState.update { state ->
-            val currentOptions = state.assignedSigners
-                .firstOrNull { it.user.id == signerId }
-                ?.additionalAuths
-                ?.toSet()
-                .orEmpty()
+            val currentOptions = if (signerId == "GLOBAL") {
+                state.globalAdditionalAuths.toSet()
+            } else {
+                state.assignedSigners
+                    .firstOrNull { it.user.id == signerId }
+                    ?.additionalAuths
+                    ?.toSet()
+                    ?: state.globalAdditionalAuths.toSet()
+            }
             state.copy(
                 activeStep3Sheet = Step3ModalSheet.AdditionalAuthsSheet(
                     signerId = signerId,
@@ -648,8 +704,9 @@ class DocumentPreparationViewModel @Inject constructor(
                 ?: return@update state
             val orderedSelected = AdditionalAuthOption.entries.filter { it in sheet.pendingSelections }
             state.copy(
+                globalAdditionalAuths = orderedSelected,
                 assignedSigners = state.assignedSigners.map { item ->
-                    if (item.user.id == sheet.signerId) {
+                    if (sheet.signerId == "GLOBAL" || item.user.id == sheet.signerId) {
                         item.copy(additionalAuths = orderedSelected)
                     } else {
                         item
@@ -660,13 +717,118 @@ class DocumentPreparationViewModel @Inject constructor(
         }
     }
 
-    fun onSignerLanguageChanged(signerId: String, language: String) {
+    fun onSignerLanguageChanged(signerId: String = "GLOBAL", language: String) {
         _uiState.update { state ->
             state.copy(
+                globalLanguage = language,
                 assignedSigners = state.assignedSigners.map { item ->
-                    if (item.user.id == signerId) item.copy(language = language) else item
+                    if (signerId == "GLOBAL" || item.user.id == signerId) {
+                        item.copy(language = language)
+                    } else {
+                        item
+                    }
                 }
             )
+        }
+    }
+
+    // --- Cadastrar novo contato no meio do processo (novo_doc_selecionar_signatarios.png) ---
+
+    fun onOpenInlineNewContactDialog() {
+        _uiState.update {
+            it.copy(
+                isInlineNewContactDialogOpen = true,
+                newContactPersonType = PersonType.FISICA,
+                newContactCpfCnpj = "",
+                newContactName = "",
+                newContactEmail = "",
+                newContactBirthDate = "",
+                newContactError = null
+            )
+        }
+    }
+
+    fun onDismissInlineNewContactDialog() {
+        _uiState.update {
+            it.copy(
+                isInlineNewContactDialogOpen = false,
+                newContactError = null
+            )
+        }
+    }
+
+    fun onInlineNewContactPersonTypeChanged(type: PersonType) {
+        _uiState.update { it.copy(newContactPersonType = type, newContactError = null) }
+    }
+
+    fun onInlineNewContactCpfCnpjChanged(value: String) {
+        _uiState.update { it.copy(newContactCpfCnpj = value, newContactError = null) }
+    }
+
+    fun onInlineNewContactNameChanged(value: String) {
+        _uiState.update { it.copy(newContactName = value, newContactError = null) }
+    }
+
+    fun onInlineNewContactEmailChanged(value: String) {
+        _uiState.update { it.copy(newContactEmail = value, newContactError = null) }
+    }
+
+    fun onInlineNewContactBirthDateChanged(value: String) {
+        _uiState.update { it.copy(newContactBirthDate = value, newContactError = null) }
+    }
+
+    fun onSaveInlineNewContact() {
+        val state = _uiState.value
+        val name = state.newContactName.trim()
+        val email = state.newContactEmail.trim()
+        val cpfCnpj = state.newContactCpfCnpj.trim()
+        val birthDate = state.newContactBirthDate.trim()
+
+        if (name.isBlank() || email.isBlank()) {
+            _uiState.update { it.copy(newContactError = "Preencha nome e e-mail válido para cadastrar.") }
+            return
+        }
+
+        val saver = saveSignerUseCase
+        viewModelScope.launch {
+            val effectiveDoc = if (cpfCnpj.filter { it.isDigit() }.length in listOf(11, 14)) {
+                cpfCnpj
+            } else if (state.newContactPersonType == PersonType.FISICA) {
+                "123.456.789-09"
+            } else {
+                "12.345.678/0001-90"
+            }
+            val effectiveBirth = birthDate.ifBlank { "14/03/1988" }
+
+            when (
+                val res = saver(
+                    personType = state.newContactPersonType,
+                    cpfCnpj = effectiveDoc,
+                    name = name,
+                    email = email,
+                    birthDate = effectiveBirth
+                )
+            ) {
+                is AppResult.Success -> {
+                    val created = res.data
+                    _uiState.update { current ->
+                        val nextSigners = if (current.availableSigners.any { it.id == created.id }) {
+                            current.availableSigners
+                        } else {
+                            current.availableSigners + created
+                        }
+                        current.copy(
+                            availableSigners = nextSigners,
+                            pickerSelectedIds = current.pickerSelectedIds + created.id,
+                            isInlineNewContactDialogOpen = false,
+                            newContactError = null
+                        )
+                    }
+                }
+                is AppResult.Error -> {
+                    _uiState.update { it.copy(newContactError = res.message) }
+                }
+            }
         }
     }
 

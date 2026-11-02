@@ -379,9 +379,9 @@ object DatabaseSeeder {
             documentId = DOC_CONTRATO_SERVICOS_ID,
             signerId = MOCK_SIGNER_2_ID,
             pageNumber = 1,
-            relativeX = 0.08f,
-            relativeY = 0.56f,
-            relativeWidth = 0.22f,
+            relativeX = 0.72f,
+            relativeY = 0.85f,
+            relativeWidth = 0.20f,
             relativeHeight = 0.07f,
             fieldType = SignatureFieldType.INITIALS
         ),
@@ -391,7 +391,7 @@ object DatabaseSeeder {
             signerId = MOCK_SIGNER_2_ID,
             pageNumber = 1,
             relativeX = 0.54f,
-            relativeY = 0.68f,
+            relativeY = 0.62f,
             relativeWidth = 0.36f,
             relativeHeight = 0.08f,
             fieldType = SignatureFieldType.SIGNATURE

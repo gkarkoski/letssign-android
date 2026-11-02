@@ -185,6 +185,14 @@ fun DocumentPreparationScreen(
         onApplyAdditionalAuths = viewModel::onApplyAdditionalAuths,
         onSignerLanguageChanged = viewModel::onSignerLanguageChanged,
         onDismissStep3Sheet = viewModel::onDismissStep3Sheet,
+        onOpenInlineNewContactDialog = viewModel::onOpenInlineNewContactDialog,
+        onDismissInlineNewContactDialog = viewModel::onDismissInlineNewContactDialog,
+        onInlineNewContactPersonTypeChanged = viewModel::onInlineNewContactPersonTypeChanged,
+        onInlineNewContactCpfCnpjChanged = viewModel::onInlineNewContactCpfCnpjChanged,
+        onInlineNewContactNameChanged = viewModel::onInlineNewContactNameChanged,
+        onInlineNewContactEmailChanged = viewModel::onInlineNewContactEmailChanged,
+        onInlineNewContactBirthDateChanged = viewModel::onInlineNewContactBirthDateChanged,
+        onSaveInlineNewContact = viewModel::onSaveInlineNewContact,
         onContinueStep3 = {
             viewModel.onSaveDraftAndContinue(ownerAdminId)
         }
@@ -395,6 +403,14 @@ fun DocumentPreparationContent(
     onApplyAdditionalAuths: () -> Unit = {},
     onSignerLanguageChanged: (String, String) -> Unit = { _, _ -> },
     onDismissStep3Sheet: () -> Unit = {},
+    onOpenInlineNewContactDialog: () -> Unit = {},
+    onDismissInlineNewContactDialog: () -> Unit = {},
+    onInlineNewContactPersonTypeChanged: (com.example.challenge_letssign.domain.model.PersonType) -> Unit = {},
+    onInlineNewContactCpfCnpjChanged: (String) -> Unit = {},
+    onInlineNewContactNameChanged: (String) -> Unit = {},
+    onInlineNewContactEmailChanged: (String) -> Unit = {},
+    onInlineNewContactBirthDateChanged: (String) -> Unit = {},
+    onSaveInlineNewContact: () -> Unit = {},
     onContinueStep3: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -566,12 +582,26 @@ fun DocumentPreparationContent(
             SignerSelectionSheetContent(
                 uiState = uiState,
                 onDismiss = onDismissSignerSelectionSheet,
+                onCreateNewContactClick = onOpenInlineNewContactDialog,
                 onSearchQueryChanged = onPickerSearchQueryChanged,
                 onToggleSigner = onTogglePickerSignerSelection,
                 onToggleGroup = onTogglePickerGroupSelection,
                 onConfirmSelection = onConfirmPickerSelection
             )
         }
+    }
+
+    if (uiState.isInlineNewContactDialogOpen) {
+        InlineNewContactDialog(
+            uiState = uiState,
+            onDismiss = onDismissInlineNewContactDialog,
+            onPersonTypeChanged = onInlineNewContactPersonTypeChanged,
+            onCpfCnpjChanged = onInlineNewContactCpfCnpjChanged,
+            onNameChanged = onInlineNewContactNameChanged,
+            onEmailChanged = onInlineNewContactEmailChanged,
+            onBirthDateChanged = onInlineNewContactBirthDateChanged,
+            onSaveClick = onSaveInlineNewContact
+        )
     }
 
     // Modal Bottom Sheets da Etapa 3 (Envio Link, Envio Método, Envio Adicionais)
@@ -586,10 +616,14 @@ fun DocumentPreparationContent(
         ) {
             when (step3Sheet) {
                 is Step3ModalSheet.DeliveryLinkSheet -> {
-                    val currentChannel = uiState.assignedSigners
-                        .firstOrNull { it.user.id == step3Sheet.signerId }
-                        ?.deliveryChannel
-                        ?: SignerDeliveryChannel.EMAIL
+                    val currentChannel = if (step3Sheet.signerId == "GLOBAL") {
+                        uiState.globalDeliveryChannel
+                    } else {
+                        uiState.assignedSigners
+                            .firstOrNull { it.user.id == step3Sheet.signerId }
+                            ?.deliveryChannel
+                            ?: uiState.globalDeliveryChannel
+                    }
                     DeliveryChannelSheetContent(
                         selectedChannel = currentChannel,
                         onDismiss = onDismissStep3Sheet,
@@ -599,10 +633,14 @@ fun DocumentPreparationContent(
                     )
                 }
                 is Step3ModalSheet.AuthMethodSheet -> {
-                    val currentMethod = uiState.assignedSigners
-                        .firstOrNull { it.user.id == step3Sheet.signerId }
-                        ?.authMethod
-                        ?: SignerAuthMethod.EMAIL
+                    val currentMethod = if (step3Sheet.signerId == "GLOBAL") {
+                        uiState.globalAuthMethod
+                    } else {
+                        uiState.assignedSigners
+                            .firstOrNull { it.user.id == step3Sheet.signerId }
+                            ?.authMethod
+                            ?: uiState.globalAuthMethod
+                    }
                     AuthMethodSheetContent(
                         selectedMethod = currentMethod,
                         onDismiss = onDismissStep3Sheet,
@@ -1420,6 +1458,7 @@ private fun AiDetectingSignersDialog(
 private fun SignerSelectionSheetContent(
     uiState: DocumentPreparationUiState,
     onDismiss: () -> Unit,
+    onCreateNewContactClick: () -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onToggleSigner: (String) -> Unit,
     onToggleGroup: (String) -> Unit,
@@ -1460,6 +1499,15 @@ private fun SignerSelectionSheetContent(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Botão "Cadastrar novo contato" caso o signatário ainda não esteja na lista (novo_doc_selecionar_signatarios.png)
+        LetsSignPrimaryButton(
+            text = "Cadastrar novo contato",
+            onClick = onCreateNewContactClick,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         LetsSignSearchBar(
             query = uiState.pickerSearchQuery,
@@ -1578,7 +1626,151 @@ private fun SignerSelectionSheetContent(
     }
 }
 
-// --- Etapa 3: Envio e Autenticação (Novo Doc Envio e Autenticação / Link / Método / Adicionais) ---
+@Composable
+private fun InlineNewContactDialog(
+    uiState: DocumentPreparationUiState,
+    onDismiss: () -> Unit,
+    onPersonTypeChanged: (com.example.challenge_letssign.domain.model.PersonType) -> Unit,
+    onCpfCnpjChanged: (String) -> Unit,
+    onNameChanged: (String) -> Unit,
+    onEmailChanged: (String) -> Unit,
+    onBirthDateChanged: (String) -> Unit,
+    onSaveClick: () -> Unit
+) {
+    val isFisica = uiState.newContactPersonType == com.example.challenge_letssign.domain.model.PersonType.FISICA
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = Color.White,
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 22.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Novo signatário",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onDismiss)
+                            .padding(6.dp)
+                    ) {
+                        CloseIcon(color = LetsSignColors.Primary, size = 18.dp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Seletor Física | Jurídica
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(LetsSignColors.Mist)
+                        .border(1.dp, LetsSignColors.Line, RoundedCornerShape(999.dp))
+                        .padding(4.dp)
+                ) {
+                    com.example.challenge_letssign.domain.model.PersonType.entries.forEach { pType ->
+                        val selected = uiState.newContactPersonType == pType
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(if (selected) Color.White else Color.Transparent)
+                                .clickable { onPersonTypeChanged(pType) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = pType.displayLabel,
+                                color = if (selected) LetsSignColors.Primary else LetsSignColors.Body,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LetsSignTextField(
+                    label = if (isFisica) "CPF *" else "CNPJ *",
+                    value = uiState.newContactCpfCnpj,
+                    onValueChange = onCpfCnpjChanged,
+                    placeholder = if (isFisica) "000.000.000-00" else "00.000.000/0000-00"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LetsSignTextField(
+                    label = if (isFisica) "Nome *" else "Razão social *",
+                    value = uiState.newContactName,
+                    onValueChange = onNameChanged,
+                    placeholder = if (isFisica) "Nome completo" else "Razão social"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LetsSignTextField(
+                    label = "E-mail *",
+                    value = uiState.newContactEmail,
+                    onValueChange = onEmailChanged,
+                    placeholder = "nome@empresa.com.br"
+                )
+
+                if (isFisica) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LetsSignTextField(
+                        label = "Data de nascimento",
+                        value = uiState.newContactBirthDate,
+                        onValueChange = onBirthDateChanged,
+                        placeholder = "dd/mm/aaaa"
+                    )
+                }
+
+                if (!uiState.newContactError.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = uiState.newContactError,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = LetsSignColors.ErrorText
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    LetsSignSecondaryButton(
+                        text = "Cancelar",
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(0.42f)
+                    )
+                    LetsSignPrimaryButton(
+                        text = "Salvar",
+                        onClick = onSaveClick,
+                        modifier = Modifier.weight(0.58f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// --- Etapa 3: Envio e Autenticação Geral para todos os usuários (novo_doc_envio_e_autenticacao.png) ---
 
 @Composable
 private fun Step3DeliveryAndAuthContent(
@@ -1590,6 +1782,8 @@ private fun Step3DeliveryAndAuthContent(
     onSignerLanguageChanged: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var languageMenuExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -1601,7 +1795,7 @@ private fun Step3DeliveryAndAuthContent(
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "Defina como cada signatário recebe o link de assinatura e como confirma a identidade.",
+            text = "Defina como os signatários recebem o link de assinatura e como confirmam a identidade.",
             style = MaterialTheme.typography.bodyLarge.copy(
                 color = LetsSignColors.Muted
             )
@@ -1609,140 +1803,67 @@ private fun Step3DeliveryAndAuthContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            uiState.assignedSigners.forEachIndexed { index, assigned ->
-                val isExpanded = uiState.expandedStep3SignerId == assigned.user.id
-                Step3SignerConfigCard(
-                    assignedSigner = assigned,
-                    colorDot = LetsSignColors.signerColor(index),
-                    isExpanded = isExpanded,
-                    onHeaderClick = { onToggleSignerExpanded(assigned.user.id) },
-                    onOpenDeliveryLinkSheet = { onOpenDeliveryLinkSheet(assigned.user.id) },
-                    onOpenAuthMethodSheet = { onOpenAuthMethodSheet(assigned.user.id) },
-                    onOpenAdditionalAuthsSheet = { onOpenAdditionalAuthsSheet(assigned.user.id) },
-                    onLanguageSelected = { lang -> onSignerLanguageChanged(assigned.user.id, lang) }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-    }
-}
-
-@Composable
-private fun Step3SignerConfigCard(
-    assignedSigner: AssignedSignerUiModel,
-    colorDot: Color,
-    isExpanded: Boolean,
-    onHeaderClick: () -> Unit,
-    onOpenDeliveryLinkSheet: () -> Unit,
-    onOpenAuthMethodSheet: () -> Unit,
-    onOpenAdditionalAuthsSheet: () -> Unit,
-    onLanguageSelected: (String) -> Unit
-) {
-    var languageMenuExpanded by remember { mutableStateOf(false) }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.25.dp, LetsSignColors.Line, RoundedCornerShape(18.dp))
-                .padding(16.dp)
+        // Card único geral de Envio e Autenticação para todos os signatários (novo_doc_envio_e_autenticacao.png)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onHeaderClick),
-                verticalAlignment = Alignment.CenterVertically
+                    .border(1.25.dp, LetsSignColors.Line, RoundedCornerShape(18.dp))
+                    .padding(18.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(colorDot)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                LetsSignAvatar(fullName = assignedSigner.user.name, size = 44.dp)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = assignedSigner.user.name,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = assignedSigner.user.email,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = LetsSignColors.Muted,
-                            fontSize = 14.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = if (isExpanded) "⌃" else "⌄",
-                    color = LetsSignColors.Body,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 6.dp)
-                )
-            }
-
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(16.dp))
-
                 // 1. Enviar link de assinatura por *
                 Step3SelectField(
                     label = "Enviar link de assinatura por",
                     isRequired = true,
-                    selectedText = assignedSigner.deliveryChannel.displayLabel,
+                    selectedText = uiState.globalDeliveryChannel.displayLabel,
                     leadingIcon = { MailIcon(color = LetsSignColors.Ink, size = 20.dp) },
-                    onClick = onOpenDeliveryLinkSheet
+                    onClick = { onOpenDeliveryLinkSheet("GLOBAL") }
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // 2. Método de autenticação *
                 Step3SelectField(
                     label = "Método de autenticação",
                     isRequired = true,
-                    selectedText = assignedSigner.authMethod.displayLabel,
+                    selectedText = uiState.globalAuthMethod.displayLabel,
                     leadingIcon = { MailIcon(color = LetsSignColors.Ink, size = 20.dp) },
-                    onClick = onOpenAuthMethodSheet
+                    onClick = { onOpenAuthMethodSheet("GLOBAL") }
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // 3. Autenticações adicionais
-                val additionalText = when (val count = assignedSigner.additionalAuths.size) {
+                val additionalText = when (val count = uiState.globalAdditionalAuths.size) {
                     0 -> "Nenhuma"
-                    1 -> assignedSigner.additionalAuths.first().displayLabel
+                    1 -> uiState.globalAdditionalAuths.first().displayLabel
                     else -> "$count opções selecionadas"
                 }
                 Step3SelectField(
                     label = "Autenticações adicionais",
                     isRequired = false,
                     selectedText = additionalText,
-                    textColor = if (assignedSigner.additionalAuths.isEmpty()) {
+                    textColor = if (uiState.globalAdditionalAuths.isEmpty()) {
                         LetsSignColors.Muted
                     } else {
                         LetsSignColors.Ink
                     },
                     leadingIcon = null,
-                    onClick = onOpenAdditionalAuthsSheet
+                    onClick = { onOpenAdditionalAuthsSheet("GLOBAL") }
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // 4. Idioma
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Step3SelectField(
                         label = "Idioma",
                         isRequired = false,
-                        selectedText = assignedSigner.language,
+                        selectedText = uiState.globalLanguage,
                         leadingIcon = null,
                         onClick = { languageMenuExpanded = true }
                     )
@@ -1763,7 +1884,7 @@ private fun Step3SignerConfigCard(
                                 },
                                 onClick = {
                                     languageMenuExpanded = false
-                                    onLanguageSelected(lang)
+                                    onSignerLanguageChanged("GLOBAL", lang)
                                 }
                             )
                         }
@@ -1771,6 +1892,8 @@ private fun Step3SignerConfigCard(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 

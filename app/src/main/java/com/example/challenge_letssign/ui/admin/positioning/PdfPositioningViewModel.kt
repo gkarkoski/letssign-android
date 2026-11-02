@@ -409,16 +409,16 @@ class PdfPositioningViewModel @Inject constructor(
                         contextHint = hint
                     )
                 )
-                // Adiciona rubrica adicional nas páginas para os 2 primeiros signatários (totalizando até 5 campos sugeridos como no Figma)
+                // Adiciona rubrica adicional no canto inferior direito das páginas para os 2 primeiros signatários (assinar_documento.png)
                 if (idx < 2 && totalPages > 1) {
                     generatedSuggestions.add(
                         AiFieldSuggestionItem(
                             id = UUID.randomUUID().toString(),
                             signerId = signerItem.signer.id,
                             pageNumber = if (idx == 0) lastPage else mainPage,
-                            relativeX = if (idx == 0) 0.08f else 0.54f,
-                            relativeY = 0.56f,
-                            relativeWidth = 0.24f,
+                            relativeX = 0.72f,
+                            relativeY = 0.85f,
+                            relativeWidth = 0.20f,
                             relativeHeight = 0.07f,
                             fieldType = SignatureFieldType.INITIALS,
                             contextHint = hint

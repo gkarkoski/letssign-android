@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -36,10 +37,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,6 +75,8 @@ import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.ui.components.ArrowLeftIcon
 import com.example.challenge_letssign.ui.components.CalendarIcon
+import com.example.challenge_letssign.ui.components.CheckIcon
+import com.example.challenge_letssign.ui.components.CloseIcon
 import com.example.challenge_letssign.ui.components.DeleteSignerConfirmDialog
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
@@ -95,8 +101,12 @@ fun SignerManagementScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    BackHandler(enabled = uiState.isFormVisible) {
-        viewModel.onDismissForm()
+    BackHandler(enabled = uiState.isFormVisible || uiState.isNewGroupVisible) {
+        when {
+            uiState.isFormVisible -> viewModel.onDismissForm()
+            uiState.isGroupContactPickerSheetOpen -> viewModel.onDismissGroupContactPickerSheet()
+            uiState.isNewGroupVisible -> viewModel.onDismissNewGroupFlow()
+        }
     }
 
     LaunchedEffect(uiState.snackbarMessage) {
@@ -121,10 +131,22 @@ fun SignerManagementScreen(
         onSaveSigner = viewModel::onSaveSigner,
         onDeleteEditingSigner = viewModel::onDeleteEditingSigner,
         onCancelDeleteSigner = viewModel::onCancelDeleteSigner,
-        onConfirmDeleteSigner = viewModel::onConfirmDeleteSigner
+        onConfirmDeleteSigner = viewModel::onConfirmDeleteSigner,
+        onOpenNewGroupFlow = viewModel::onOpenNewGroupFlow,
+        onDismissNewGroupFlow = viewModel::onDismissNewGroupFlow,
+        onGroupNameChanged = viewModel::onGroupNameChanged,
+        onOpenGroupContactPickerSheet = viewModel::onOpenGroupContactPickerSheet,
+        onDismissGroupContactPickerSheet = viewModel::onDismissGroupContactPickerSheet,
+        onGroupPickerSearchQueryChanged = viewModel::onGroupPickerSearchQueryChanged,
+        onToggleGroupPickerContact = viewModel::onToggleGroupPickerContact,
+        onConfirmGroupPickerSelection = viewModel::onConfirmGroupPickerSelection,
+        onToggleConfirmedGroupMember = viewModel::onToggleConfirmedGroupMember,
+        onCreateGroup = viewModel::onCreateGroup,
+        onOpenCreateFormFromGroupPicker = viewModel::onOpenCreateFormFromGroupPicker
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignerManagementContent(
     uiState: SignerManagementUiState,
@@ -142,35 +164,85 @@ fun SignerManagementContent(
     onDeleteEditingSigner: () -> Unit,
     onCancelDeleteSigner: () -> Unit,
     onConfirmDeleteSigner: () -> Unit,
+    onOpenNewGroupFlow: () -> Unit = {},
+    onDismissNewGroupFlow: () -> Unit = {},
+    onGroupNameChanged: (String) -> Unit = {},
+    onOpenGroupContactPickerSheet: () -> Unit = {},
+    onDismissGroupContactPickerSheet: () -> Unit = {},
+    onGroupPickerSearchQueryChanged: (String) -> Unit = {},
+    onToggleGroupPickerContact: (String) -> Unit = {},
+    onConfirmGroupPickerSelection: () -> Unit = {},
+    onToggleConfirmedGroupMember: (String) -> Unit = {},
+    onCreateGroup: () -> Unit = {},
+    onOpenCreateFormFromGroupPicker: () -> Unit = onOpenCreateForm,
     modifier: Modifier = Modifier
 ) {
+    val activeSubScreen = when {
+        uiState.isFormVisible -> "FORM"
+        uiState.isNewGroupVisible -> "GROUP"
+        else -> "LIST"
+    }
+
     AnimatedContent(
-        targetState = uiState.isFormVisible,
+        targetState = activeSubScreen,
         transitionSpec = {
             fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
         },
-        label = "contacts_list_or_form",
+        label = "contacts_list_form_or_group",
         modifier = modifier.fillMaxSize()
-    ) { isFormOpen ->
-        if (isFormOpen) {
-            ContactFormScreenContent(
+    ) { mode ->
+        when (mode) {
+            "FORM" -> {
+                ContactFormScreenContent(
+                    uiState = uiState,
+                    onBack = onDismissForm,
+                    onPersonTypeChanged = onPersonTypeChanged,
+                    onCpfCnpjChanged = onCpfCnpjChanged,
+                    onNameChanged = onNameChanged,
+                    onEmailChanged = onEmailChanged,
+                    onBirthDateChanged = onBirthDateChanged,
+                    onDeleteClick = onDeleteEditingSigner,
+                    onSaveClick = onSaveSigner
+                )
+            }
+            "GROUP" -> {
+                NewGroupScreenContent(
+                    uiState = uiState,
+                    onCloseOrCancel = onDismissNewGroupFlow,
+                    onGroupNameChanged = onGroupNameChanged,
+                    onOpenAddContactsSheet = onOpenGroupContactPickerSheet,
+                    onToggleMember = onToggleConfirmedGroupMember,
+                    onCreateGroupClick = onCreateGroup
+                )
+            }
+            else -> {
+                ContactsListScreenContent(
+                    uiState = uiState,
+                    onSearchQueryChanged = onSearchQueryChanged,
+                    onClearSearch = onClearSearch,
+                    onNewContactClick = onOpenCreateForm,
+                    onNewGroupClick = onOpenNewGroupFlow,
+                    onContactClick = onOpenEditForm
+                )
+            }
+        }
+    }
+
+    if (uiState.isNewGroupVisible && uiState.isGroupContactPickerSheetOpen) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = onDismissGroupContactPickerSheet,
+            sheetState = sheetState,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+        ) {
+            GroupContactSelectionSheetContent(
                 uiState = uiState,
-                onBack = onDismissForm,
-                onPersonTypeChanged = onPersonTypeChanged,
-                onCpfCnpjChanged = onCpfCnpjChanged,
-                onNameChanged = onNameChanged,
-                onEmailChanged = onEmailChanged,
-                onBirthDateChanged = onBirthDateChanged,
-                onDeleteClick = onDeleteEditingSigner,
-                onSaveClick = onSaveSigner
-            )
-        } else {
-            ContactsListScreenContent(
-                uiState = uiState,
-                onSearchQueryChanged = onSearchQueryChanged,
-                onClearSearch = onClearSearch,
-                onNewContactClick = onOpenCreateForm,
-                onContactClick = onOpenEditForm
+                onDismiss = onDismissGroupContactPickerSheet,
+                onCreateNewContactClick = onOpenCreateFormFromGroupPicker,
+                onSearchQueryChanged = onGroupPickerSearchQueryChanged,
+                onToggleContact = onToggleGroupPickerContact,
+                onConfirmSelection = onConfirmGroupPickerSelection
             )
         }
     }
@@ -185,12 +257,387 @@ fun SignerManagementContent(
     }
 }
 
+/**
+ * Fluxo de Criar Grupo de Signatários:
+ * - novo_grupo.png (Estado inicial vazio: "Nenhum contato selecionado" + "+ Adicionar contato" + "Continuar" desabilitado)
+ * - novo_grupo_finalizar.png (Estado com contatos selecionados: checkboxes marcados + botão "Criar grupo")
+ */
+@Composable
+private fun NewGroupScreenContent(
+    uiState: SignerManagementUiState,
+    onCloseOrCancel: () -> Unit,
+    onGroupNameChanged: (String) -> Unit,
+    onOpenAddContactsSheet: () -> Unit,
+    onToggleMember: (String) -> Unit,
+    onCreateGroupClick: () -> Unit
+) {
+    val selectedMembers = uiState.groupConfirmedMembers
+    val hasSelectedMembers = selectedMembers.isNotEmpty()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    Scaffold(
+        containerColor = Color.White,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onCloseOrCancel)
+                        .padding(6.dp)
+                ) {
+                    CloseIcon(color = LetsSignColors.Primary, size = 20.dp)
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Novo Grupo",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+            }
+        },
+        bottomBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .navigationBarsPadding()
+            ) {
+                HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    LetsSignSecondaryButton(
+                        text = "Cancelar",
+                        onClick = onCloseOrCancel,
+                        modifier = Modifier.weight(0.38f)
+                    )
+                    LetsSignPrimaryButton(
+                        text = if (hasSelectedMembers) "Criar grupo" else "Continuar",
+                        onClick = onCreateGroupClick,
+                        enabled = uiState.canCreateGroup,
+                        modifier = Modifier.weight(0.62f)
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Nome do grupo",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Input com halo/borda roxa (novo_grupo.png e novo_grupo_finalizar.png)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LetsSignColors.VioletSoft.copy(alpha = 0.45f))
+                    .padding(3.dp)
+            ) {
+                BasicTextField(
+                    value = uiState.groupNameInput,
+                    onValueChange = onGroupNameChanged,
+                    singleLine = true,
+                    interactionSource = interactionSource,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done
+                    ),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = LetsSignColors.Ink,
+                        fontSize = 17.sp
+                    ),
+                    cursorBrush = SolidColor(LetsSignColors.Primary),
+                    decorationBox = { innerTextField ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 54.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(Color.White)
+                                .border(
+                                    width = if (isFocused || uiState.groupNameInput.isNotBlank()) 1.75.dp else 1.5.dp,
+                                    color = LetsSignColors.Primary,
+                                    shape = RoundedCornerShape(11.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (uiState.groupNameInput.isEmpty()) {
+                                    Text(
+                                        text = "Ex.: Turma 15 Calculo II AGO - 2027",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = LetsSignColors.Body,
+                                            fontSize = 17.sp
+                                        )
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (!hasSelectedMembers) {
+                // novo_grupo.png: Card central vazio ("Nenhum contato selecionado" + "+ Adicionar contato")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(LetsSignColors.Mist)
+                        .border(1.25.dp, LetsSignColors.Line, RoundedCornerShape(22.dp))
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(LetsSignColors.VioletSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        UserPlusIcon(color = LetsSignColors.Primary, size = 28.dp)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Nenhum contato selecionado",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    LetsSignPrimaryButton(
+                        text = "Adicionar contato",
+                        onClick = onOpenAddContactsSheet,
+                        leadingIcon = {
+                            PlusIcon(color = Color.White, size = 18.dp)
+                        }
+                    )
+                }
+            } else {
+                // novo_grupo_finalizar.png: Lista de contatos selecionados com checkboxes marcados
+                selectedMembers.forEach { member ->
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleMember(member.id) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GroupCheckbox(
+                                checked = true,
+                                onCheckedChange = { onToggleMember(member.id) }
+                            )
+                            Spacer(modifier = Modifier.width(14.dp))
+                            LetsSignAvatar(fullName = member.name, size = 46.dp)
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = member.name,
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontSize = 17.sp
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = member.email,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = LetsSignColors.Muted
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                LetsSignSecondaryButton(
+                    text = "+ Adicionar contato",
+                    onClick = onOpenAddContactsSheet,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Bottom Sheet "Selecionar contatos" (novo_grupo_selecionar_contatos.png)
+ */
+@Composable
+private fun GroupContactSelectionSheetContent(
+    uiState: SignerManagementUiState,
+    onDismiss: () -> Unit,
+    onCreateNewContactClick: () -> Unit,
+    onSearchQueryChanged: (String) -> Unit,
+    onToggleContact: (String) -> Unit,
+    onConfirmSelection: () -> Unit
+) {
+    val contacts = uiState.filteredGroupPickerSigners
+    val selectedCount = uiState.groupPickerSelectedIds.size
+    val buttonLabel = when (selectedCount) {
+        0 -> "Confirmar seleção"
+        1 -> "Adicionar 1 selecionado"
+        else -> "Adicionar $selectedCount selecionados"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, bottom = 28.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Selecionar contatos",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(6.dp)
+            ) {
+                CloseIcon(color = LetsSignColors.Primary, size = 20.dp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Botão "Cadastrar novo contato" em destaque no topo (novo_grupo_selecionar_contatos.png)
+        LetsSignPrimaryButton(
+            text = "Cadastrar novo contato",
+            onClick = onCreateNewContactClick,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        LetsSignSearchBar(
+            query = uiState.groupPickerSearchQuery,
+            onQueryChanged = onSearchQueryChanged,
+            placeholder = "Buscar por grupo, nome ou e-mail"
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 350.dp),
+            contentPadding = PaddingValues(vertical = 4.dp)
+        ) {
+            items(items = contacts, key = { it.id }) { contact ->
+                val isChecked = contact.id in uiState.groupPickerSelectedIds
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleContact(contact.id) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        GroupCheckbox(
+                            checked = isChecked,
+                            onCheckedChange = { onToggleContact(contact.id) }
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        LetsSignAvatar(fullName = contact.name, size = 46.dp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = contact.name,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontSize = 17.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = contact.email,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = LetsSignColors.Muted
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        LetsSignPrimaryButton(
+            text = buttonLabel,
+            onClick = onConfirmSelection,
+            enabled = selectedCount > 0,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun GroupCheckbox(
+    checked: Boolean,
+    onCheckedChange: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(26.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (checked) LetsSignColors.Primary else Color.White)
+            .border(
+                width = if (checked) 0.dp else 1.5.dp,
+                color = if (checked) LetsSignColors.Primary else LetsSignColors.Line,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(onClick = onCheckedChange),
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            CheckIcon(color = Color.White, size = 14.dp)
+        }
+    }
+}
+
 @Composable
 private fun ContactsListScreenContent(
     uiState: SignerManagementUiState,
     onSearchQueryChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
     onNewContactClick: () -> Unit,
+    onNewGroupClick: () -> Unit,
     onContactClick: (User) -> Unit
 ) {
     val signers = uiState.filteredSigners
@@ -245,7 +692,6 @@ private fun ContactsListScreenContent(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isSearching) {
-                        // Contatos Sem Resultado.png
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(bottom = 64.dp)
@@ -280,7 +726,6 @@ private fun ContactsListScreenContent(
                             )
                         }
                     } else {
-                        // Contatos Vazio.png
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(bottom = 64.dp)
@@ -325,7 +770,7 @@ private fun ContactsListScreenContent(
                         start = 24.dp,
                         end = 24.dp,
                         top = 18.dp,
-                        bottom = 110.dp
+                        bottom = 116.dp
                     )
                 ) {
                     item {
@@ -356,7 +801,7 @@ private fun ContactsListScreenContent(
             }
         }
 
-        // Snackbar ("Contato salvo com sucesso." em Contato Salvo.png)
+        // Snackbar ("Contato salvo com sucesso." ou "Grupo criado com sucesso.")
         if (!uiState.snackbarMessage.isNullOrBlank()) {
             Box(
                 modifier = Modifier
@@ -374,20 +819,26 @@ private fun ContactsListScreenContent(
             }
         }
 
-        // Botão flutuante "+ Novo contato" centralizado na base (Contatos Lista.png)
-        Box(
+        // Botões flutuantes na base: "+ Novo grupo" e "+ Novo contato"
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 40.dp, vertical = 18.dp)
-                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 18.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            LetsSignSecondaryButton(
+                text = "+ Novo grupo",
+                onClick = onNewGroupClick,
+                modifier = Modifier.weight(0.45f)
+            )
             LetsSignPrimaryButton(
                 text = "Novo contato",
                 onClick = onNewContactClick,
                 leadingIcon = {
                     PlusIcon(color = Color.White, size = 18.dp)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.weight(0.55f)
             )
         }
     }
@@ -452,9 +903,6 @@ private fun buildHighlightedName(fullName: String, query: String): AnnotatedStri
     }
 }
 
-/**
- * Telas de formulário: Contato Novo (Física), Contato Novo Jurídica, Contato Novo Erros e Contato Editar.
- */
 @Composable
 private fun ContactFormScreenContent(
     uiState: SignerManagementUiState,
@@ -545,7 +993,6 @@ private fun ContactFormScreenContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Campo Tipo (Física / Jurídica)
             Text(
                 text = "Tipo",
                 style = MaterialTheme.typography.bodyMedium.copy(
@@ -609,7 +1056,6 @@ private fun ContactFormScreenContent(
             Spacer(modifier = Modifier.height(18.dp))
 
             if (uiState.personType == PersonType.FISICA) {
-                // CPF *
                 ContactFormInputField(
                     label = "CPF",
                     isRequired = true,
@@ -625,7 +1071,6 @@ private fun ContactFormScreenContent(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Nome *
                 ContactFormInputField(
                     label = "Nome",
                     isRequired = true,
@@ -641,7 +1086,6 @@ private fun ContactFormScreenContent(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // E-mail *
                 ContactFormInputField(
                     label = "E-mail",
                     isRequired = !isEditing,
@@ -657,7 +1101,6 @@ private fun ContactFormScreenContent(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Data de nascimento *
                 ContactFormInputField(
                     label = "Data de nascimento",
                     isRequired = !isEditing,
@@ -674,7 +1117,6 @@ private fun ContactFormScreenContent(
                     }
                 )
             } else {
-                // CNPJ * (Contato Novo Jurídica.png)
                 ContactFormInputField(
                     label = "CNPJ",
                     isRequired = true,
@@ -693,7 +1135,6 @@ private fun ContactFormScreenContent(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Razão social *
                 ContactFormInputField(
                     label = "Razão social",
                     isRequired = true,
@@ -709,7 +1150,6 @@ private fun ContactFormScreenContent(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // E-mail *
                 ContactFormInputField(
                     label = "E-mail",
                     isRequired = !isEditing,

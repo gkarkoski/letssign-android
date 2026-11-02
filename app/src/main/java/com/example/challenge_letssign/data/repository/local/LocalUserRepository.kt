@@ -126,6 +126,25 @@ class LocalUserRepository @Inject constructor(
             }
         }
 
+    override suspend fun assignGroupToUsers(
+        groupName: String,
+        userIds: Set<String>
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao criar grupo de signatários.") {
+            val trimmed = groupName.trim()
+            if (trimmed.isBlank()) {
+                throw IllegalArgumentException("Informe o nome do grupo.")
+            }
+            if (userIds.isEmpty()) {
+                throw IllegalArgumentException("Selecione ao menos 1 contato para o grupo.")
+            }
+            for (userId in userIds) {
+                val existing = userDao.getUserById(userId) ?: continue
+                userDao.updateUser(existing.copy(groupName = trimmed))
+            }
+        }
+    }
+
     private suspend fun findUserByEmailOrRoleHint(
         resolvedEmail: String,
         originalEmail: String

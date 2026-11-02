@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.challenge_letssign.domain.model.DocumentStatus
@@ -96,7 +97,10 @@ fun DocumentDetailsScreen(
         onResendReminder = viewModel::onResendReminder,
         onDownloadSignedDocument = viewModel::onDownloadSignedDocument,
         onRetryLoad = viewModel::onRetryLoad,
-        onDeleteDraft = viewModel::onDeleteDraftDocument,
+        onDeleteDraft = viewModel::onRequestDeleteDocument,
+        onRequestDeleteDocument = viewModel::onRequestDeleteDocument,
+        onCancelDeleteDocument = viewModel::onCancelDeleteDocument,
+        onConfirmDeleteDocument = viewModel::onConfirmDeleteDocument,
         onDismissSnackbar = viewModel::onDismissSnackbar
     )
 }
@@ -111,6 +115,9 @@ fun DocumentDetailsContent(
     onDownloadSignedDocument: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onDeleteDraft: () -> Unit,
+    onRequestDeleteDocument: () -> Unit = onDeleteDraft,
+    onCancelDeleteDocument: () -> Unit = {},
+    onConfirmDeleteDocument: () -> Unit = onDeleteDraft,
     onDismissSnackbar: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -151,12 +158,12 @@ fun DocumentDetailsContent(
                     )
                 }
 
-                // Regra 4: Só mostra botão de excluir se estiver em DRAFT
-                if (uiState.isDraft) {
+                // Botão de excluir/remover documento no topo também disponível
+                if (doc != null) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onDeleteDraft)
+                            .clickable(onClick = onRequestDeleteDocument)
                             .padding(8.dp)
                     ) {
                         TrashIcon(color = LetsSignColors.Error, size = 20.dp)
@@ -196,7 +203,8 @@ fun DocumentDetailsContent(
                     }
 
                     !isCompleted -> {
-                        // Detalhe Enviado.png e Detalhe Parcial.png: "Reenviar lembrete" / "Reenviar lembrete para Beatriz"
+                        // Detalhe Enviado / Detalhe Parcial (prints_v2/detalhe_parcial.png):
+                        // Botão "Reenviar lembrete" + botão para excluir documento incompleto
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -204,22 +212,46 @@ fun DocumentDetailsContent(
                                 .navigationBarsPadding()
                         ) {
                             HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 LetsSignSecondaryButton(
                                     text = uiState.reminderButtonLabel,
                                     onClick = onResendReminder,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(LetsSignColors.ErrorSoft)
+                                        .clickable(onClick = onRequestDeleteDocument),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        TrashIcon(color = LetsSignColors.ErrorText, size = 18.dp)
+                                        Text(
+                                            text = "Excluir documento",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                color = LetsSignColors.ErrorText,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
 
-                    isCompleted && !uiState.isDownloaded -> {
-                        // Detalhe Concluído.png: "Baixar documento assinado"
+                    isCompleted -> {
+                        // Detalhe Concluído / Baixado: "Baixar documento assinado" + "Remover documento"
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -227,16 +259,42 @@ fun DocumentDetailsContent(
                                 .navigationBarsPadding()
                         ) {
                             HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                LetsSignPrimaryButton(
-                                    text = "Baixar documento assinado",
-                                    onClick = onDownloadSignedDocument,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                if (!uiState.isDownloaded) {
+                                    LetsSignPrimaryButton(
+                                        text = "Baixar documento assinado",
+                                        onClick = onDownloadSignedDocument,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(LetsSignColors.ErrorSoft)
+                                        .clickable(onClick = onRequestDeleteDocument),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        TrashIcon(color = LetsSignColors.ErrorText, size = 18.dp)
+                                        Text(
+                                            text = "Remover documento",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                color = LetsSignColors.ErrorText,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -661,6 +719,51 @@ fun DocumentDetailsContent(
                             onDismissSnackbar()
                         }
                     )
+                }
+            }
+        }
+    }
+
+    if (uiState.isConfirmDeleteDialogOpen && doc != null) {
+        val actionWord = if (isCompleted) "Remover" else "Excluir"
+        Dialog(onDismissRequest = onCancelDeleteDocument) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color.White,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Text(
+                        text = "$actionWord documento?",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "O documento \"${doc.title}\" será removido da sua lista.",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.Muted
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        LetsSignSecondaryButton(
+                            text = "Cancelar",
+                            onClick = onCancelDeleteDocument,
+                            modifier = Modifier.weight(1f)
+                        )
+                        LetsSignPrimaryButton(
+                            text = actionWord,
+                            onClick = onConfirmDeleteDocument,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
