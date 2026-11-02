@@ -1,11 +1,14 @@
 package com.example.challenge_letssign.ui.admin.preparation
 
+import com.example.challenge_letssign.domain.model.AdditionalAuthOption
 import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.ImportedPdfFile
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignerAuthMethod
+import com.example.challenge_letssign.domain.model.SignerDeliveryChannel
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
@@ -56,7 +59,10 @@ class DocumentPreparationTest {
             importPdfUseCase = ImportPdfUseCase(fakePdfRepo),
             prepareDraftDocumentUseCase = PrepareDraftDocumentUseCase(fakeDocRepo),
             documentRepository = fakeDocRepo
-        )
+        ).apply {
+            pdfProcessingDelayMillis = 0L
+            aiDetectionDelayMillis = 0L
+        }
     }
 
     @After
@@ -75,6 +81,8 @@ class DocumentPreparationTest {
         val state = viewModel.uiState.value
         assertEquals(PdfImportStatus.READY, state.pdfStatus)
         assertEquals("doc_internal_123.pdf", state.importedPdf?.internalFileName)
+        assertEquals(6, state.importedPdf?.pageCount)
+        assertEquals("1,8 MB", state.importedPdf?.formattedFileSize)
         assertTrue(state.canAdvanceFromStep1)
 
         viewModel.onContinueFromStep1()
@@ -98,48 +106,129 @@ class DocumentPreparationTest {
     }
 
     @Test
-    fun `Step 2 - selecting signers in sheet, assigning roles and saving draft stores internal fileName in Room`() = runTest(testDispatcher) {
+    fun `Step 2 - Sugerir com IA detects 3 signers and allows confirming selection`() = runTest(testDispatcher) {
         viewModel.onTitleChanged("Contrato de serviço")
         viewModel.onPdfUriSelected("content://valid/contrato.pdf", "contrato.pdf")
         viewModel.onContinueFromStep1()
 
-        // Open selection sheet and select 2 signers
+        viewModel.onSuggestSignersWithAiClick()
+        val aiState = viewModel.uiState.value
+        assertTrue(aiState.isReviewingAiSigners)
+        assertEquals(3, aiState.aiSuggestedSigners.size)
+        assertEquals(3, aiState.selectedAiSignersCount)
+
+        // Uncheck one suggested signer and re-check
+        viewModel.onToggleAiSuggestedSigner("s-3")
+        assertEquals(2, viewModel.uiState.value.selectedAiSignersCount)
+        viewModel.onToggleAiSuggestedSigner("s-3")
+        assertEquals(3, viewModel.uiState.value.selectedAiSignersCount)
+
+        viewModel.onConfirmAiSuggestedSigners()
+        val afterConfirm = viewModel.uiState.value
+        assertFalse(afterConfirm.isReviewingAiSigners)
+        assertEquals(3, afterConfirm.assignedSigners.size)
+        assertEquals(SignerRoleClass.CONTRATANTE, afterConfirm.assignedSigners[0].roleClass)
+        assertEquals(SignerRoleClass.CONTRATADO, afterConfirm.assignedSigners[1].roleClass)
+        assertEquals(SignerRoleClass.TESTEMUNHA, afterConfirm.assignedSigners[2].roleClass)
+    }
+
+    @Test
+    fun `Step 2 - group search Juridico shows group header and toggles all group members`() = runTest(testDispatcher) {
+        viewModel.onOpenSignerSelectionSheet()
+        viewModel.onPickerSearchQueryChanged("Jurídico")
+
+        val groups = viewModel.uiState.value.matchingPickerGroups
+        assertEquals(1, groups.size)
+        assertEquals("Jurídico", groups.first().groupName)
+        assertEquals(2, groups.first().members.size)
+
+        viewModel.onTogglePickerGroupSelection("Jurídico")
+        assertEquals(2, viewModel.uiState.value.pickerSelectedIds.size)
+
+        viewModel.onConfirmPickerSelection()
+        assertEquals(2, viewModel.uiState.value.assignedSigners.size)
+    }
+
+    @Test
+    fun `Step 2 and Step 3 - configuring delivery link, auth method, additional auths and saving draft persists in Room`() = runTest(testDispatcher) {
+        viewModel.onTitleChanged("Contrato de serviço")
+        viewModel.onPdfUriSelected("content://valid/contrato.pdf", "contrato-servicos.pdf")
+        viewModel.onContinueFromStep1()
+
+        // Select Marina and Rafael
         viewModel.onOpenSignerSelectionSheet()
         viewModel.onTogglePickerSignerSelection("s-1")
         viewModel.onTogglePickerSignerSelection("s-2")
         viewModel.onConfirmPickerSelection()
 
         assertEquals(2, viewModel.uiState.value.assignedSigners.size)
+        viewModel.onSignerRoleChanged("s-2", SignerRoleClass.CONTRATADO)
 
-        // Change role of s-2 to TESTEMUNHA
-        viewModel.onSignerRoleChanged("s-2", SignerRoleClass.TESTEMUNHA)
+        // Advance to Step 3 (Envio e autenticação)
+        viewModel.onContinueFromStep2()
+        assertEquals(3, viewModel.uiState.value.currentStep)
 
-        // Save draft
+        // Configure Delivery Channel, Auth Method and Additional Auths for s-1
+        viewModel.onOpenDeliveryLinkSheet("s-1")
+        viewModel.onSelectDeliveryChannel("s-1", SignerDeliveryChannel.WHATSAPP)
+
+        viewModel.onOpenAuthMethodSheet("s-1")
+        viewModel.onSelectAuthMethod("s-1", SignerAuthMethod.SMS)
+
+        viewModel.onOpenAdditionalAuthsSheet("s-1")
+        viewModel.onTogglePendingAdditionalAuth(AdditionalAuthOption.PHOTO_ID_DOCUMENT)
+        viewModel.onTogglePendingAdditionalAuth(AdditionalAuthOption.SELFIE_WITH_BIOMETRICS)
+        viewModel.onApplyAdditionalAuths()
+
+        // Save draft from Step 3
         viewModel.onSaveDraftAndContinue("admin-1")
 
         val savedDoc = viewModel.uiState.value.completedDraftDocument
         assertNotNull(savedDoc)
         assertEquals("Contrato de serviço", savedDoc?.title)
         assertEquals("doc_internal_123.pdf", savedDoc?.fileName)
+        assertEquals(6, savedDoc?.pageCount)
         assertEquals(DocumentStatus.DRAFT, savedDoc?.status)
 
         val savedSigners = fakeDocRepo.getDocumentSigners(savedDoc!!.id).getOrNull().orEmpty()
         assertEquals(2, savedSigners.size)
+        val marinaRef = savedSigners.first { it.signerId == "s-1" }
+        assertEquals(SignerRoleClass.CONTRATANTE, marinaRef.roleClass)
+        assertEquals(SignerDeliveryChannel.WHATSAPP, marinaRef.deliveryChannel)
+        assertEquals(SignerAuthMethod.SMS, marinaRef.authMethod)
         assertEquals(
-            SignerRoleClass.CONTRATANTE,
-            savedSigners.first { it.signerId == "s-1" }.roleClass
-        )
-        assertEquals(
-            SignerRoleClass.TESTEMUNHA,
-            savedSigners.first { it.signerId == "s-2" }.roleClass
+            listOf(
+                AdditionalAuthOption.PHOTO_ID_DOCUMENT,
+                AdditionalAuthOption.SELFIE_WITH_BIOMETRICS
+            ),
+            marinaRef.additionalAuths
         )
     }
 
     private class FakePrepUserRepository : UserRepository {
         private val signersFlow = MutableStateFlow(
             listOf(
-                User("s-1", "Carlos Silva", "carlos@letssign.com", "11988881111", "123456", UserRole.SIGNER),
-                User("s-2", "Mariana Souza", "mariana@letssign.com", "11977772222", "123456", UserRole.SIGNER)
+                User(
+                    id = "s-1",
+                    name = "Marina Albuquerque",
+                    email = "marina.albuquerque@exemplo.com.br",
+                    role = UserRole.SIGNER,
+                    groupName = "Jurídico"
+                ),
+                User(
+                    id = "s-2",
+                    name = "Rafael Tavares",
+                    email = "rafael.tavares@exemplo.com.br",
+                    role = UserRole.SIGNER,
+                    groupName = "Comercial"
+                ),
+                User(
+                    id = "s-3",
+                    name = "Beatriz Nogueira",
+                    email = "beatriz.nogueira@exemplo.com.br",
+                    role = UserRole.SIGNER,
+                    groupName = "Jurídico"
+                )
             )
         )
 
@@ -170,7 +259,8 @@ class DocumentPreparationTest {
                     ImportedPdfFile(
                         internalFileName = "doc_internal_123.pdf",
                         originalDisplayName = display,
-                        pageCount = 3
+                        pageCount = 6,
+                        fileSizeBytes = 1_887_436L
                     )
                 )
             }
