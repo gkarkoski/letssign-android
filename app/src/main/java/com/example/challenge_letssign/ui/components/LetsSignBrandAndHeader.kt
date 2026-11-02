@@ -124,6 +124,8 @@ fun LetsSignGradientHeader(
 enum class StatusChipStyle {
     DRAFT,
     SENT,
+    WAITING_YOU,
+    WAITING,
     PARTIAL,
     COMPLETED,
     ROLE
@@ -139,6 +141,8 @@ fun LetsSignStatusChip(
     val (bgColor, textColor, borderColor) = when (style) {
         StatusChipStyle.DRAFT -> Triple(LetsSignColors.Mist, LetsSignColors.Body, LetsSignColors.Line)
         StatusChipStyle.SENT -> Triple(LetsSignColors.VioletSoft, LetsSignColors.VioletDeep, Color.Transparent)
+        StatusChipStyle.WAITING_YOU -> Triple(LetsSignColors.VioletSoft, LetsSignColors.VioletDeep, Color.Transparent)
+        StatusChipStyle.WAITING -> Triple(LetsSignColors.VioletSoft, LetsSignColors.VioletDeep, Color.Transparent)
         StatusChipStyle.PARTIAL -> Triple(Color.White, LetsSignColors.Primary, LetsSignColors.Primary)
         StatusChipStyle.COMPLETED -> Triple(LetsSignColors.SuccessSoft, LetsSignColors.Success, Color.Transparent)
         StatusChipStyle.ROLE -> Triple(Color.White, LetsSignColors.Ink, LetsSignColors.Line)
@@ -161,6 +165,8 @@ fun LetsSignStatusChip(
     ) {
         when (style) {
             StatusChipStyle.SENT -> SendPlaneIcon(color = textColor, size = 13.dp)
+            StatusChipStyle.WAITING_YOU -> EditPenIcon(color = textColor, size = 13.dp)
+            StatusChipStyle.WAITING -> ClockIcon(color = textColor, size = 13.dp)
             StatusChipStyle.PARTIAL -> PartialCircleIcon(color = textColor, size = 13.dp)
             StatusChipStyle.COMPLETED -> CheckIcon(color = textColor, size = 13.dp)
             else -> Unit

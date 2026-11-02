@@ -719,3 +719,177 @@ fun SyncArrowsIcon(
         )
     }
 }
+
+@Composable
+fun HourglassIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.75.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        // Top and bottom bars
+        drawLine(
+            color = color,
+            start = Offset(w * 0.22f, h * 0.14f),
+            end = Offset(w * 0.78f, h * 0.14f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.22f, h * 0.86f),
+            end = Offset(w * 0.78f, h * 0.86f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        val glass = Path().apply {
+            moveTo(w * 0.28f, h * 0.14f)
+            lineTo(w * 0.28f, h * 0.34f)
+            lineTo(w * 0.5f, h * 0.5f)
+            lineTo(w * 0.28f, h * 0.66f)
+            lineTo(w * 0.28f, h * 0.86f)
+            moveTo(w * 0.72f, h * 0.14f)
+            lineTo(w * 0.72f, h * 0.34f)
+            lineTo(w * 0.5f, h * 0.5f)
+            lineTo(w * 0.72f, h * 0.66f)
+            lineTo(w * 0.72f, h * 0.86f)
+        }
+        drawPath(
+            path = glass,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun SparklesIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 18.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.6.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        val star = Path().apply {
+            moveTo(w * 0.5f, h * 0.1f)
+            quadraticTo(w * 0.5f, h * 0.5f, w * 0.9f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.5f, w * 0.5f, h * 0.9f)
+            quadraticTo(w * 0.5f, h * 0.5f, w * 0.1f, h * 0.5f)
+            quadraticTo(w * 0.5f, h * 0.5f, w * 0.5f, h * 0.1f)
+            close()
+        }
+        drawPath(
+            path = star,
+            color = color,
+            style = Stroke(width = strokeWidth, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun ClockIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.5.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawCircle(
+            color = color,
+            radius = w * 0.42f,
+            center = Offset(w * 0.5f, h * 0.5f),
+            style = Stroke(width = strokeWidth)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.28f),
+            end = Offset(w * 0.5f, h * 0.5f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.5f),
+            end = Offset(w * 0.66f, h * 0.6f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun ArrowLeftIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 22.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.8.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawLine(
+            color = color,
+            start = Offset(w * 0.82f, h * 0.5f),
+            end = Offset(w * 0.18f, h * 0.5f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        val head = Path().apply {
+            moveTo(w * 0.44f, h * 0.24f)
+            lineTo(w * 0.18f, h * 0.5f)
+            lineTo(w * 0.44f, h * 0.76f)
+        }
+        drawPath(
+            path = head,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun CalendarIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val strokeWidth = 1.6.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.14f, h * 0.22f),
+            size = Size(w * 0.72f, h * 0.64f),
+            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx()),
+            style = Stroke(width = strokeWidth)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.14f, h * 0.42f),
+            end = Offset(w * 0.86f, h * 0.42f),
+            strokeWidth = strokeWidth
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.34f, h * 0.12f),
+            end = Offset(w * 0.34f, h * 0.28f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.66f, h * 0.12f),
+            end = Offset(w * 0.66f, h * 0.28f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}

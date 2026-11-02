@@ -105,6 +105,9 @@ fun SignerDashboardContent(
         ) {
             when (selectedBottomTab) {
                 LetsSignBottomNavTab.DOCUMENTS,
+                LetsSignBottomNavTab.MY_SIGNATURES,
+                LetsSignBottomNavTab.WAITING_OTHERS,
+                LetsSignBottomNavTab.CONTACTS,
                 LetsSignBottomNavTab.SIGNATURES -> {
                     LetsSignGradientHeader(
                         title = "Assinaturas",

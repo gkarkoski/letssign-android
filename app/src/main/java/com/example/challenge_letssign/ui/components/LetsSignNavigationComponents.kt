@@ -20,21 +20,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 
+/**
+ * 4 itens da Navegação Inferior (Componentes.png & fluxo_telas.md):
+ * Documentos, Minhas Assinaturas, Aguardando Terceiros, Contatos.
+ * (Mantém também SIGNATURES e PROFILE para compatibilidade durante a transição até o Milestone 6).
+ */
 enum class LetsSignBottomNavTab(val label: String) {
     DOCUMENTS("Documentos"),
-    SIGNATURES("Assinaturas"),
-    PROFILE("Perfil")
+    MY_SIGNATURES("Minhas\nAssinaturas"),
+    WAITING_OTHERS("Aguardando\nTerceiros"),
+    CONTACTS("Contatos"),
+    SIGNATURES("Contatos"),
+    PROFILE("Perfil");
+
+    companion object {
+        val figmaPrimaryTabs: List<LetsSignBottomNavTab> = listOf(
+            DOCUMENTS,
+            MY_SIGNATURES,
+            WAITING_OTHERS,
+            CONTACTS
+        )
+    }
 }
 
 @Composable
 fun LetsSignBottomNavigationBar(
     selectedTab: LetsSignBottomNavTab,
     onTabSelected: (LetsSignBottomNavTab) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tabs: List<LetsSignBottomNavTab> = LetsSignBottomNavTab.figmaPrimaryTabs
 ) {
     Column(
         modifier = modifier
@@ -51,20 +70,22 @@ fun LetsSignBottomNavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            LetsSignBottomNavTab.entries.forEach { tab ->
-                val isSelected = tab == selectedTab
+            tabs.forEach { tab ->
+                val isSelected = tab == selectedTab ||
+                    (tab == LetsSignBottomNavTab.CONTACTS && selectedTab == LetsSignBottomNavTab.SIGNATURES)
                 val iconColor = if (isSelected) LetsSignColors.Primary else LetsSignColors.Body
                 val textColor = if (isSelected) LetsSignColors.Primary else LetsSignColors.Muted
 
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .clip(RoundedCornerShape(14.dp))
                         .clickable { onTabSelected(tab) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -80,14 +101,19 @@ fun LetsSignBottomNavigationBar(
                     ) {
                         when (tab) {
                             LetsSignBottomNavTab.DOCUMENTS -> DocumentFileIcon(color = iconColor, size = 22.dp)
-                            LetsSignBottomNavTab.SIGNATURES -> SignaturePenIcon(color = iconColor, size = 22.dp)
+                            LetsSignBottomNavTab.MY_SIGNATURES -> SignaturePenIcon(color = iconColor, size = 22.dp)
+                            LetsSignBottomNavTab.WAITING_OTHERS -> HourglassIcon(color = iconColor, size = 22.dp)
+                            LetsSignBottomNavTab.CONTACTS,
+                            LetsSignBottomNavTab.SIGNATURES,
                             LetsSignBottomNavTab.PROFILE -> UserProfileIcon(color = iconColor, size = 22.dp)
                         }
                     }
                     Text(
                         text = tab.label,
                         color = textColor,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        textAlign = TextAlign.Center,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
@@ -99,7 +125,7 @@ fun LetsSignBottomNavigationBar(
 @Composable
 fun LetsSignWizardStepper(
     currentStep: Int,
-    totalSteps: Int = 5,
+    totalSteps: Int = 6,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -112,8 +138,8 @@ fun LetsSignWizardStepper(
 
             Box(
                 modifier = Modifier
-                    .width(42.dp)
-                    .height(42.dp)
+                    .width(40.dp)
+                    .height(40.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(
                         when {
@@ -125,8 +151,8 @@ fun LetsSignWizardStepper(
             ) {
                 Box(
                     modifier = Modifier
-                        .width(34.dp)
-                        .height(34.dp)
+                        .width(32.dp)
+                        .height(32.dp)
                         .clip(RoundedCornerShape(999.dp))
                         .background(
                             when {
@@ -145,12 +171,12 @@ fun LetsSignWizardStepper(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isCompleted) {
-                        CheckIcon(color = Color.White, size = 15.dp)
+                        CheckIcon(color = Color.White, size = 14.dp)
                     } else {
                         Text(
                             text = step.toString(),
                             color = if (isCurrent) LetsSignColors.Primary else LetsSignColors.Muted,
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
