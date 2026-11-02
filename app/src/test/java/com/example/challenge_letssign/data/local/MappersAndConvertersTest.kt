@@ -98,21 +98,7 @@ class MappersAndConvertersTest {
             role = UserRole.SIGNER,
             personType = PersonType.FISICA,
             cpfCnpj = "123.456.789-09",
-            nicknameOrTradeName = "Mari",
-            contactType = "Contratante",
-            rg = "MG-12.345.678",
-            issuingAgency = "SSP",
-            documentUf = "MG",
-            nationality = "Brasileira",
-            profession = "Advogada",
             birthDate = "14/03/1988",
-            maritalStatus = "Casada",
-            zipCode = "30140-071",
-            street = "Av. Afonso Pena",
-            addressNumber = "1500",
-            neighborhood = "Centro",
-            city = "Belo Horizonte",
-            state = "Minas Gerais",
             groupName = "Jurídico"
         )
         assertEquals(user, user.toEntity().toDomain())

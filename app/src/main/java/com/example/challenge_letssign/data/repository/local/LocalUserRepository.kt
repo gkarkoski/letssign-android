@@ -35,39 +35,34 @@ class LocalUserRepository @Inject constructor(
             }
         }
 
-    override suspend fun requestLoginCode(
-        email: String,
-        expectedRole: UserRole?
-    ): AppResult<User> = withContext(ioDispatcher) {
-        runCatchingResult("Informe um e-mail válido, como nome@empresa.com.br.") {
-            val trimmed = email.trim()
-            if (!isValidEmailFormat(trimmed)) {
-                throw IllegalArgumentException("Informe um e-mail válido, como nome@empresa.com.br.")
+    override suspend fun requestLoginCode(email: String): AppResult<User> =
+        withContext(ioDispatcher) {
+            runCatchingResult(INVALID_EMAIL_MESSAGE) {
+                val trimmed = email.trim()
+                if (!isValidEmailFormat(trimmed)) {
+                    throw IllegalArgumentException(INVALID_EMAIL_MESSAGE)
+                }
+                val resolvedEmail = resolveAliasEmail(trimmed)
+                val userEntity = findUserByEmailOrRoleHint(resolvedEmail, trimmed)
+                    ?: throw IllegalArgumentException(INVALID_EMAIL_MESSAGE)
+                userEntity.toDomain()
             }
-            val resolvedEmail = resolveAliasEmail(trimmed)
-            val userEntity = findUserOrFallbackByRole(resolvedEmail, trimmed, expectedRole)
-                ?: throw IllegalArgumentException("Informe um e-mail válido, como nome@empresa.com.br.")
-            userEntity.toDomain()
         }
-    }
 
-    override suspend fun verifyLoginCode(
-        email: String,
-        code: String,
-        expectedRole: UserRole?
-    ): AppResult<User> = withContext(ioDispatcher) {
-        runCatchingResult("Código inválido ou expirado.") {
-            val digitsOnly = code.filter { it.isDigit() }
-            if (digitsOnly.length != 6 || digitsOnly == INVALID_TEST_OTP_CODE) {
-                throw IllegalArgumentException("Código inválido ou expirado. Peça um novo código para continuar.")
+    override suspend fun verifyLoginCode(email: String, code: String): AppResult<User> =
+        withContext(ioDispatcher) {
+            runCatchingResult(INVALID_OTP_MESSAGE) {
+                val digitsOnly = code.filter { it.isDigit() }
+                if (digitsOnly.length != 6 || digitsOnly in INVALID_TEST_OTP_CODES) {
+                    throw IllegalArgumentException(INVALID_OTP_MESSAGE)
+                }
+                val trimmed = email.trim()
+                val resolvedEmail = resolveAliasEmail(trimmed)
+                val userEntity = findUserByEmailOrRoleHint(resolvedEmail, trimmed)
+                    ?: throw IllegalArgumentException(INVALID_EMAIL_MESSAGE)
+                userEntity.toDomain()
             }
-            val trimmed = email.trim()
-            val resolvedEmail = resolveAliasEmail(trimmed)
-            val userEntity = findUserOrFallbackByRole(resolvedEmail, trimmed, expectedRole)
-                ?: throw IllegalArgumentException("Usuário não encontrado para o e-mail informado.")
-            userEntity.toDomain()
         }
-    }
 
     override suspend fun getUserById(userId: String): AppResult<User> =
         withContext(ioDispatcher) {
@@ -82,8 +77,7 @@ class LocalUserRepository @Inject constructor(
         withContext(ioDispatcher) {
             runCatchingResult("Erro ao verificar e-mail.") {
                 val trimmed = email.trim()
-                val direct = userDao.getUserByEmail(trimmed)
-                direct?.toDomain()
+                userDao.getUserByEmail(trimmed)?.toDomain()
             }
         }
 
@@ -132,25 +126,21 @@ class LocalUserRepository @Inject constructor(
             }
         }
 
-    private suspend fun findUserOrFallbackByRole(
+    private suspend fun findUserByEmailOrRoleHint(
         resolvedEmail: String,
-        originalEmail: String,
-        expectedRole: UserRole?
+        originalEmail: String
     ): UserEntity? {
         val byResolved = userDao.getUserByEmail(resolvedEmail)
         if (byResolved != null) return byResolved
         val byOriginal = userDao.getUserByEmail(originalEmail)
         if (byOriginal != null) return byOriginal
 
-        // Para facilitar testes no protótipo: se o e-mail for válido e o perfil foi indicado
-        // (ex: admin@empresa.com.br no Login Admin ou qualquer e-mail válido no Login Signatário),
-        // retorna o usuário principal daquele perfil se não houver match exato.
-        return when (expectedRole) {
-            UserRole.ADMIN -> userDao.getUserByEmail("admin@exemplo.com.br")
-                ?: userDao.getUserByEmail("admin@letssign.com")
-            UserRole.SIGNER -> userDao.getUserByEmail("rafael.tavares@exemplo.com.br")
-                ?: userDao.getUserByEmail("marina.albuquerque@exemplo.com.br")
-            null -> null
+        // No Login Geral unificado: se digitar qualquer e-mail contendo "admin" faz fallback para o Admin;
+        // caso contrário, se for um e-mail válido de teste não cadastrado, faz fallback para o Signatário Rafael Tavares.
+        return if (originalEmail.lowercase().startsWith("admin")) {
+            userDao.getUserByEmail("admin@exemplo.com.br")
+        } else {
+            userDao.getUserByEmail("rafael.tavares@exemplo.com.br")
         }
     }
 
@@ -168,6 +158,9 @@ class LocalUserRepository @Inject constructor(
     }
 
     companion object {
-        const val INVALID_TEST_OTP_CODE = "000000"
+        const val INVALID_EMAIL_MESSAGE = "Informe um e-mail válido, como nome@empresa.com.br."
+        const val INVALID_OTP_MESSAGE =
+            "Código inválido ou expirado. Confira os dígitos ou peça um novo código."
+        val INVALID_TEST_OTP_CODES = setOf("000000", "482915")
     }
 }

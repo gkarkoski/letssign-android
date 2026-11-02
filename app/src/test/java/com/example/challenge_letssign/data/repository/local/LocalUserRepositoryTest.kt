@@ -63,19 +63,24 @@ class LocalUserRepositoryTest {
         assertTrue(aliasLogin is AppResult.Success)
         assertEquals(UserRole.ADMIN, aliasLogin.getOrNull()?.role)
 
-        // Figma OTP request & verification
-        val requestAdminOtp = repository.requestLoginCode("admin@exemplo.com.br", UserRole.ADMIN)
+        // Figma Login Geral OTP request & verification (Admin and Signer)
+        val requestAdminOtp = repository.requestLoginCode("admin@exemplo.com.br")
         assertTrue(requestAdminOtp.isSuccess)
+        assertEquals(UserRole.ADMIN, requestAdminOtp.getOrNull()?.role)
 
-        val verifyAdminOtp = repository.verifyLoginCode("admin@exemplo.com.br", "482910", UserRole.ADMIN)
+        val verifyAdminOtp = repository.verifyLoginCode("admin@exemplo.com.br", "482910")
         assertTrue(verifyAdminOtp.isSuccess)
         assertEquals(UserRole.ADMIN, verifyAdminOtp.getOrNull()?.role)
 
-        // Invalid OTP code (000000 or < 6 digits) triggers Login Código inválido error
-        val invalidOtp = repository.verifyLoginCode("admin@exemplo.com.br", "000000", UserRole.ADMIN)
+        val verifySignerOtp = repository.verifyLoginCode("rafael.tavares@exemplo.com.br", "482910")
+        assertTrue(verifySignerOtp.isSuccess)
+        assertEquals(UserRole.SIGNER, verifySignerOtp.getOrNull()?.role)
+
+        // Invalid OTP code (482915 or 000000 or < 6 digits) triggers Login Código inválido error
+        val invalidOtp = repository.verifyLoginCode("admin@exemplo.com.br", "482915")
         assertTrue(invalidOtp.isError)
         assertEquals(
-            "Código inválido ou expirado. Peça um novo código para continuar.",
+            "Código inválido ou expirado. Confira os dígitos ou peça um novo código.",
             (invalidOtp as AppResult.Error).message
         )
     }
