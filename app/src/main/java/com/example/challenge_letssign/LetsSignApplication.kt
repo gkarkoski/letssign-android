@@ -45,7 +45,8 @@ class LetsSignApplication : Application() {
                 userDao = userDao,
                 documentDao = documentDao,
                 signatureFieldDao = signatureFieldDao,
-                filesDir = applicationContext.filesDir
+                filesDir = applicationContext.filesDir,
+                appContext = applicationContext
             )
         }
     }

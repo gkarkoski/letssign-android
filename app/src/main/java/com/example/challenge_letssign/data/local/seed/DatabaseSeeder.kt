@@ -1,5 +1,10 @@
 package com.example.challenge_letssign.data.local.seed
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import com.example.challenge_letssign.data.local.dao.DocumentDao
 import com.example.challenge_letssign.data.local.dao.SignatureFieldDao
 import com.example.challenge_letssign.data.local.dao.UserDao
@@ -476,10 +481,14 @@ object DatabaseSeeder {
         userDao: UserDao,
         documentDao: DocumentDao? = null,
         signatureFieldDao: SignatureFieldDao? = null,
-        filesDir: File? = null
+        filesDir: File? = null,
+        appContext: Context? = null
     ) {
         if (filesDir != null) {
-            ensureSeedPdfFileExists(filesDir)
+            val seedPdf = ensureSeedPdfFileExists(filesDir)
+            if (appContext != null) {
+                publishSamplePdfToPublicDownloadsIfPossible(appContext, seedPdf)
+            }
         }
         if (userDao.getUserCount() == 0) {
             userDao.insertUsersIgnore(initialUsers)
@@ -492,6 +501,36 @@ object DatabaseSeeder {
                 }
                 initialSignatureFields.forEach { field ->
                     signatureFieldDao.upsertSignatureField(field)
+                }
+            }
+        }
+    }
+
+    /**
+     * Publica uma cópia do `contrato-servicos.pdf` na pasta Downloads pública do emulador (MediaStore)
+     * para que o explorador de arquivos do Android também já tenha um PDF válido disponível.
+     */
+    private fun publishSamplePdfToPublicDownloadsIfPossible(context: Context, sourcePdf: File) {
+        if (!sourcePdf.exists() || sourcePdf.length() <= 0L) return
+        runCatching {
+            val prefs = context.getSharedPreferences("letssign_seed_prefs", Context.MODE_PRIVATE)
+            if (prefs.getBoolean("downloads_pdf_seeded_v1", false)) return
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, SEED_PDF_FILE_NAME)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { out ->
+                        sourcePdf.inputStream().use { input ->
+                            input.copyTo(out)
+                        }
+                    }
+                    prefs.edit().putBoolean("downloads_pdf_seeded_v1", true).apply()
                 }
             }
         }

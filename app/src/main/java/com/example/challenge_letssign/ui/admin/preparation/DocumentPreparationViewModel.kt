@@ -226,10 +226,18 @@ class DocumentPreparationViewModel @Inject constructor(
         if (uriString.isBlank()) return
         pdfImportJob?.cancel()
         pdfImportJob = viewModelScope.launch {
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                val defaultTitle = when {
+                    state.title.isNotBlank() -> state.title
+                    uriString == "sample://relatorio-final.pdf" -> "Relatório Mensal"
+                    uriString == "sample://contrato-servicos.pdf" -> "Contrato de serviço"
+                    else -> state.title
+                }
+                state.copy(
+                    title = defaultTitle,
+                    titleError = null,
                     pdfStatus = PdfImportStatus.IMPORTING,
-                    failedFileName = fallbackName ?: "documento.pdf",
+                    failedFileName = fallbackName ?: "contrato-servicos.pdf",
                     pdfErrorMessage = null,
                     generalError = null
                 )

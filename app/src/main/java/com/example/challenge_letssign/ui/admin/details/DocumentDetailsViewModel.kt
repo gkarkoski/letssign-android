@@ -8,6 +8,7 @@ import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.repository.DocumentRepository
+import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.utils.DateTimeFormatters
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -202,7 +203,8 @@ data class DocumentDetailsUiState(
 
 @HiltViewModel
 class DocumentDetailsViewModel @Inject constructor(
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val pdfStorageRepository: PdfStorageRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentDetailsUiState())
@@ -262,13 +264,19 @@ class DocumentDetailsViewModel @Inject constructor(
             .removeSuffix(".pdf")
             .removeSuffix(".PDF")
         val signedName = "$baseName-assinado.pdf"
-        _uiState.update {
-            it.copy(
-                isDownloaded = true,
-                downloadedFileName = signedName,
-                snackbarMessage = "Download concluído",
-                snackbarActionLabel = "Abrir"
+        viewModelScope.launch {
+            pdfStorageRepository.exportSignedPdfToDownloads(
+                internalFileName = doc.fileName,
+                targetDisplayName = signedName
             )
+            _uiState.update {
+                it.copy(
+                    isDownloaded = true,
+                    downloadedFileName = signedName,
+                    snackbarMessage = "Download concluído",
+                    snackbarActionLabel = "Abrir"
+                )
+            }
         }
     }
 

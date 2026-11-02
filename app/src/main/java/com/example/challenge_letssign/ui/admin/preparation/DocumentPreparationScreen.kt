@@ -140,6 +140,8 @@ fun DocumentPreparationScreen(
         }
     }
 
+    var isFileSourceSheetOpen by remember { mutableStateOf(false) }
+
     LaunchedEffect(uiState.completedDraftDocument) {
         val doc = uiState.completedDraftDocument
         if (doc != null) {
@@ -153,7 +155,7 @@ fun DocumentPreparationScreen(
         onCloseOrCancel = onCancel,
         onTitleChanged = viewModel::onTitleChanged,
         onPickPdfClick = {
-            pdfPickerLauncher.launch(arrayOf("application/pdf"))
+            isFileSourceSheetOpen = true
         },
         onClearPdfClick = viewModel::onClearPdfFile,
         onContinueStep1 = viewModel::onContinueFromStep1,
@@ -187,6 +189,175 @@ fun DocumentPreparationScreen(
             viewModel.onSaveDraftAndContinue(ownerAdminId)
         }
     )
+
+    if (isFileSourceSheetOpen) {
+        PdfSourcePickerModalSheet(
+            onDismiss = { isFileSourceSheetOpen = false },
+            onSelectSampleValidPdf = {
+                isFileSourceSheetOpen = false
+                viewModel.onPdfUriSelected(
+                    uriString = "sample://contrato-servicos.pdf",
+                    fallbackName = "contrato-servicos.pdf"
+                )
+            },
+            onSelectSampleCorruptedPdf = {
+                isFileSourceSheetOpen = false
+                viewModel.onPdfUriSelected(
+                    uriString = "sample://relatorio-final.pdf",
+                    fallbackName = "relatorio-final.pdf"
+                )
+            },
+            onOpenSystemFilePicker = {
+                isFileSourceSheetOpen = false
+                pdfPickerLauncher.launch(arrayOf("application/pdf"))
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PdfSourcePickerModalSheet(
+    onDismiss: () -> Unit,
+    onSelectSampleValidPdf: () -> Unit,
+    onSelectSampleCorruptedPdf: () -> Unit,
+    onOpenSystemFilePicker: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, bottom = 28.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Escolher arquivo PDF",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onDismiss)
+                        .padding(6.dp)
+                ) {
+                    CloseIcon(color = LetsSignColors.Primary, size = 20.dp)
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Escolha o PDF de exemplo integrado ou selecione um arquivo do celular.",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = LetsSignColors.Muted,
+                    fontSize = 15.sp
+                )
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Opção 1: PDF válido de 6 páginas gerado pelo PDFBox
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onSelectSampleValidPdf),
+                shape = RoundedCornerShape(16.dp),
+                color = LetsSignColors.VioletSoft
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.5.dp, LetsSignColors.Primary, RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        DocumentFileIcon(color = LetsSignColors.Primary, size = 24.dp)
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "contrato-servicos.pdf",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "PDF de exemplo · 6 páginas · 1,8 MB",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = LetsSignColors.VioletDeep,
+                                fontSize = 14.sp
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Opção 2: Simular PDF corrompido (para testar a tela Novo Doc Erro)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onSelectSampleCorruptedPdf),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.25.dp, LetsSignColors.Line, RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LetsSignColors.ErrorSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        FileAlertIcon(color = LetsSignColors.Error, size = 24.dp)
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "relatorio-final.pdf (Simular erro)",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Testar estado de arquivo inválido ou corrompido",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = LetsSignColors.Muted,
+                                fontSize = 14.sp
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LetsSignSecondaryButton(
+                text = "Procurar nos arquivos do celular",
+                onClick = onOpenSystemFilePicker,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
