@@ -1,5 +1,6 @@
 package com.example.challenge_letssign.ui.admin.signers
 
+import com.example.challenge_letssign.domain.model.PersonType
 import com.example.challenge_letssign.domain.model.User
 import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.domain.repository.UserRepository
@@ -52,32 +53,78 @@ class SignerManagementTest {
     @Test
     fun `extractInitials generates expected 2-letter uppercase initials`() {
         assertEquals("MA", extractInitials("Marina Albuquerque"))
-        assertEquals("CS", extractInitials("Carlos Silva"))
+        assertEquals("NS", extractInitials("Nova Soluções Ltda."))
         assertEquals("JO", extractInitials("João"))
         assertEquals("?", extractInitials("   "))
     }
 
     @Test
-    fun `onSaveSigner with empty fields sets validation errors`() = runTest(testDispatcher) {
+    fun `Contato Novo Erros - saving invalid Fisica fields sets exact Figma field errors and summary banner`() = runTest(testDispatcher) {
         viewModel.onOpenCreateForm()
-        viewModel.onPasswordChanged("")
+        viewModel.onCpfCnpjChanged("123.456.78")
+        viewModel.onNameChanged("Camila Duarte")
+        viewModel.onEmailChanged("camila.duarte@exemplo")
+        viewModel.onBirthDateChanged("01/01/22")
 
         viewModel.onSaveSigner()
 
         val state = viewModel.uiState.value
-        assertEquals("Informe o nome completo do signatário.", state.nameError)
-        assertEquals("E-mail inválido. Confira o formato.", state.emailError)
-        assertEquals("Informe o telefone do signatário.", state.phoneError)
-        assertEquals("Informe uma senha de acesso para o signatário.", state.passwordError)
+        assertEquals("CPF incompleto. Use 11 dígitos.", state.cpfCnpjError)
+        assertNull(state.nameError)
+        assertEquals("Informe um e-mail válido, como nome@empresa.com.br.", state.emailError)
+        assertEquals("Informe a data de nascimento no formato dd/mm/aaaa", state.birthDateError)
+        assertEquals(3, state.validationErrorCount)
+        assertEquals("Corrija 3 campos para salvar o contato.", state.formSummaryErrorBanner)
         assertTrue(state.isFormVisible)
+    }
+
+    @Test
+    fun `Contato Novo Fisica - valid fields format CPF and birthDate, save contact and show Contato salvo snackbar`() = runTest(testDispatcher) {
+        viewModel.onOpenCreateForm()
+        viewModel.onCpfCnpjChanged("12345678909")
+        viewModel.onNameChanged("Marina Albuquerque")
+        viewModel.onEmailChanged("marina.albuquerque@exemplo.com.br")
+        viewModel.onBirthDateChanged("14031988")
+
+        viewModel.onSaveSigner()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isFormVisible)
+        assertEquals("Contato salvo com sucesso.", state.snackbarMessage)
+        val saved = state.allSigners.firstOrNull { it.email == "marina.albuquerque@exemplo.com.br" }
+        assertNotNull(saved)
+        assertEquals(PersonType.FISICA, saved?.personType)
+        assertEquals("123.456.789-09", saved?.cpfCnpj)
+        assertEquals("14/03/1988", saved?.birthDate)
+    }
+
+    @Test
+    fun `Contato Novo Juridica - validates 14-digit CNPJ, Razao social and Email without requiring birthDate`() = runTest(testDispatcher) {
+        viewModel.onOpenCreateForm()
+        viewModel.onPersonTypeChanged(PersonType.JURIDICA)
+        viewModel.onCpfCnpjChanged("12345678000190")
+        viewModel.onNameChanged("Nova Soluções Ltda.")
+        viewModel.onEmailChanged("contato@novasolucoes.com.br")
+
+        viewModel.onSaveSigner()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isFormVisible)
+        assertEquals("Contato salvo com sucesso.", state.snackbarMessage)
+        val saved = state.allSigners.firstOrNull { it.email == "contato@novasolucoes.com.br" }
+        assertNotNull(saved)
+        assertEquals(PersonType.JURIDICA, saved?.personType)
+        assertEquals("12.345.678/0001-90", saved?.cpfCnpj)
+        assertEquals("", saved?.birthDate)
     }
 
     @Test
     fun `onSaveSigner with duplicate email shows duplicate email error`() = runTest(testDispatcher) {
         viewModel.onOpenCreateForm()
-        viewModel.onNameChanged("Outro Carlos")
-        viewModel.onEmailChanged("carlos@letssign.com")
-        viewModel.onPhoneChanged("(11) 91111-2222")
+        viewModel.onCpfCnpjChanged("11122233344")
+        viewModel.onNameChanged("Outro Rafael")
+        viewModel.onEmailChanged("rafael.tavares@exemplo.com.br")
+        viewModel.onBirthDateChanged("03/09/1985")
 
         viewModel.onSaveSigner()
 
@@ -87,65 +134,79 @@ class SignerManagementTest {
     }
 
     @Test
-    fun `onSaveSigner with valid new signer adds to list and shows snackbar`() = runTest(testDispatcher) {
-        viewModel.onOpenCreateForm()
-        viewModel.onNameChanged("Marina Albuquerque")
-        viewModel.onEmailChanged("marina.albuquerque@exemplo.com.br")
-        viewModel.onPhoneChanged("(11) 95555-6666")
+    fun `Contato Editar - locks personType, allows updating contact and deleting contact`() = runTest(testDispatcher) {
+        val rafael = viewModel.uiState.value.allSigners.first { it.email == "rafael.tavares@exemplo.com.br" }
+        viewModel.onOpenEditForm(rafael)
 
+        // Attempting to change personType while editing should be ignored
+        viewModel.onPersonTypeChanged(PersonType.JURIDICA)
+        assertEquals(PersonType.FISICA, viewModel.uiState.value.personType)
+
+        viewModel.onNameChanged("Rafael Tavares Atualizado")
         viewModel.onSaveSigner()
 
-        val state = viewModel.uiState.value
-        assertFalse(state.isFormVisible)
-        assertEquals("Signatário salvo", state.snackbarMessage)
-        assertTrue(state.allSigners.any { it.email == "marina.albuquerque@exemplo.com.br" })
-    }
+        val afterEdit = viewModel.uiState.value
+        assertFalse(afterEdit.isFormVisible)
+        assertEquals("Contato salvo com sucesso.", afterEdit.snackbarMessage)
+        assertEquals("Rafael Tavares Atualizado", afterEdit.allSigners.first { it.id == rafael.id }.name)
 
-    @Test
-    fun `editing existing signer allows keeping same email and updates name`() = runTest(testDispatcher) {
-        val carlos = viewModel.uiState.value.allSigners.first { it.email == "carlos@letssign.com" }
-        viewModel.onOpenEditForm(carlos)
-        viewModel.onNameChanged("Carlos Silva Junior")
-
-        viewModel.onSaveSigner()
-
-        val state = viewModel.uiState.value
-        assertFalse(state.isFormVisible)
-        assertEquals("Signatário salvo", state.snackbarMessage)
-        val updated = state.allSigners.first { it.id == carlos.id }
-        assertEquals("Carlos Silva Junior", updated.name)
-    }
-
-    @Test
-    fun `search query filters signers by name or email`() = runTest(testDispatcher) {
-        viewModel.onSearchQueryChanged("mariana")
-        assertEquals(1, viewModel.uiState.value.filteredSigners.size)
-        assertEquals("mariana@letssign.com", viewModel.uiState.value.filteredSigners.first().email)
-
-        viewModel.onSearchQueryChanged("")
-        assertEquals(2, viewModel.uiState.value.filteredSigners.size)
-    }
-
-    @Test
-    fun `delete signer confirmation flow removes signer and displays snackbar`() = runTest(testDispatcher) {
-        val target = viewModel.uiState.value.allSigners.first()
-        viewModel.onRequestDeleteSigner(target)
+        // Reopen edit form and delete contact
+        val updatedRafael = afterEdit.allSigners.first { it.id == rafael.id }
+        viewModel.onOpenEditForm(updatedRafael)
+        viewModel.onDeleteEditingSigner()
         assertNotNull(viewModel.uiState.value.signerPendingDeletion)
 
         viewModel.onConfirmDeleteSigner()
+        val afterDelete = viewModel.uiState.value
+        assertNull(afterDelete.signerPendingDeletion)
+        assertFalse(afterDelete.isFormVisible)
+        assertEquals("Contato excluído.", afterDelete.snackbarMessage)
+        assertFalse(afterDelete.allSigners.any { it.id == rafael.id })
+    }
 
-        val state = viewModel.uiState.value
-        assertNull(state.signerPendingDeletion)
-        assertEquals("Signatário excluído", state.snackbarMessage)
-        assertFalse(state.allSigners.any { it.id == target.id })
+    @Test
+    fun `Contatos Busca and Limpar busca filter by name, email or CPF_CNPJ`() = runTest(testDispatcher) {
+        viewModel.onSearchQueryChanged("beatriz")
+        assertEquals(1, viewModel.uiState.value.filteredSigners.size)
+        assertEquals("beatriz.nogueira@exemplo.com.br", viewModel.uiState.value.filteredSigners.first().email)
+
+        // Search by CPF digits
+        viewModel.onSearchQueryChanged("321654")
+        assertEquals(1, viewModel.uiState.value.filteredSigners.size)
+        assertEquals("Rafael Tavares", viewModel.uiState.value.filteredSigners.first().name)
+
+        // Clear search
+        viewModel.onClearSearch()
+        assertEquals(2, viewModel.uiState.value.filteredSigners.size)
     }
 
     private class FakeSignerUserRepository : UserRepository {
         private val usersFlow = MutableStateFlow(
             listOf(
-                User("admin-1", "Admin", "admin@letssign.com", "11999990000", "123456", UserRole.ADMIN),
-                User("s-1", "Carlos Silva", "carlos@letssign.com", "11988881111", "123456", UserRole.SIGNER),
-                User("s-2", "Mariana Souza", "mariana@letssign.com", "11977772222", "123456", UserRole.SIGNER)
+                User(
+                    id = "admin-1",
+                    name = "Admin",
+                    email = "admin@exemplo.com.br",
+                    role = UserRole.ADMIN
+                ),
+                User(
+                    id = "s-1",
+                    name = "Rafael Tavares",
+                    email = "rafael.tavares@exemplo.com.br",
+                    role = UserRole.SIGNER,
+                    personType = PersonType.FISICA,
+                    cpfCnpj = "321.654.987-10",
+                    birthDate = "03/09/1985"
+                ),
+                User(
+                    id = "s-2",
+                    name = "Beatriz Nogueira",
+                    email = "beatriz.nogueira@exemplo.com.br",
+                    role = UserRole.SIGNER,
+                    personType = PersonType.FISICA,
+                    cpfCnpj = "456.789.123-44",
+                    birthDate = "22/07/1993"
+                )
             )
         )
 
@@ -155,10 +216,8 @@ class SignerManagementTest {
         override suspend fun requestLoginCode(email: String): AppResult<User> =
             AppResult.Error("Not used")
 
-        override suspend fun verifyLoginCode(
-            email: String,
-            code: String
-        ): AppResult<User> = AppResult.Error("Not used")
+        override suspend fun verifyLoginCode(email: String, code: String): AppResult<User> =
+            AppResult.Error("Not used")
 
         override suspend fun getUserById(userId: String): AppResult<User> {
             val user = usersFlow.value.firstOrNull { it.id == userId }

@@ -58,9 +58,12 @@ fun LetsSignAvatar(
 }
 
 fun extractInitials(fullName: String): String {
-    val parts = fullName.trim()
+    val ignoredSuffixes = setOf("ltda", "ltda.", "s/a", "s.a.", "sa", "me", "eireli", "epp")
+    val rawParts = fullName.trim()
         .split(Regex("\\s+"))
         .filter { it.isNotBlank() }
+    val parts = rawParts.filterNot { it.lowercase() in ignoredSuffixes }
+        .ifEmpty { rawParts }
     return when {
         parts.isEmpty() -> "?"
         parts.size == 1 -> parts.first().take(2).uppercase()
