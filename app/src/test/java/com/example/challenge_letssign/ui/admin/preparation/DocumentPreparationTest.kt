@@ -205,6 +205,40 @@ class DocumentPreparationTest {
         )
     }
 
+    @Test
+    fun `Step 2 Cadastrar novo contato inline and Step 3 GLOBAL delivery and auth settings apply to all signers`() = runTest(testDispatcher) {
+        viewModel.onTitleChanged("Contrato de serviço")
+        viewModel.onPdfUriSelected("content://valid/contrato.pdf", "contrato-servicos.pdf")
+        viewModel.onContinueFromStep1()
+
+        // Open signer selection sheet and register a new contact inline
+        viewModel.onOpenSignerSelectionSheet()
+        viewModel.onOpenInlineNewContactDialog()
+        viewModel.onInlineNewContactNameChanged("Camila Duarte")
+        viewModel.onInlineNewContactEmailChanged("camila.duarte@exemplo.com.br")
+        viewModel.onSaveInlineNewContact()
+
+        assertFalse(viewModel.uiState.value.isInlineNewContactDialogOpen)
+        assertEquals(1, viewModel.uiState.value.pickerSelectedIds.size)
+
+        // Also select s-1 and confirm
+        viewModel.onTogglePickerSignerSelection("s-1")
+        viewModel.onConfirmPickerSelection()
+        assertEquals(2, viewModel.uiState.value.assignedSigners.size)
+
+        // Advance to Step 3 and configure GLOBAL settings
+        viewModel.onContinueFromStep2()
+        viewModel.onOpenDeliveryLinkSheet("GLOBAL")
+        viewModel.onSelectDeliveryChannel("GLOBAL", SignerDeliveryChannel.WHATSAPP)
+        viewModel.onOpenAuthMethodSheet("GLOBAL")
+        viewModel.onSelectAuthMethod("GLOBAL", SignerAuthMethod.SMS)
+        viewModel.onSignerLanguageChanged("GLOBAL", "Inglês")
+
+        assertTrue(viewModel.uiState.value.assignedSigners.all { it.deliveryChannel == SignerDeliveryChannel.WHATSAPP })
+        assertTrue(viewModel.uiState.value.assignedSigners.all { it.authMethod == SignerAuthMethod.SMS })
+        assertTrue(viewModel.uiState.value.assignedSigners.all { it.language == "Inglês" })
+    }
+
     private class FakePrepUserRepository : UserRepository {
         private val signersFlow = MutableStateFlow(
             listOf(

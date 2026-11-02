@@ -48,6 +48,7 @@ data class DocumentDetailsUiState(
     val downloadedFileName: String? = null,
     val snackbarMessage: String? = null,
     val snackbarActionLabel: String? = null,
+    val isConfirmDeleteDialogOpen: Boolean = false,
     val isDeleted: Boolean = false
 ) {
     val isDraft: Boolean
@@ -310,12 +311,31 @@ class DocumentDetailsViewModel @Inject constructor(
     }
 
     fun onDeleteDraftDocument() {
-        val doc = _uiState.value.document ?: return
-        if (doc.status != DocumentStatus.DRAFT) return
+        onConfirmDeleteDocument()
+    }
 
+    fun onRequestDeleteDocument() {
+        if (_uiState.value.document == null) return
+        _uiState.update { it.copy(isConfirmDeleteDialogOpen = true) }
+    }
+
+    fun onCancelDeleteDocument() {
+        _uiState.update { it.copy(isConfirmDeleteDialogOpen = false) }
+    }
+
+    fun onConfirmDeleteDocument() {
+        val doc = _uiState.value.document ?: return
         viewModelScope.launch {
             documentRepository.deleteDocument(doc.id)
-            _uiState.update { it.copy(isDeleted = true) }
+            if (doc.fileName != com.example.challenge_letssign.data.local.seed.DatabaseSeeder.SEED_PDF_FILE_NAME) {
+                pdfStorageRepository.deletePdfFile(doc.fileName)
+            }
+            _uiState.update {
+                it.copy(
+                    isConfirmDeleteDialogOpen = false,
+                    isDeleted = true
+                )
+            }
         }
     }
 }

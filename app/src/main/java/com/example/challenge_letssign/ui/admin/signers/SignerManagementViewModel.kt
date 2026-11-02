@@ -33,7 +33,15 @@ data class SignerManagementUiState(
     val isSaving: Boolean = false,
     val signerPendingDeletion: User? = null,
     val snackbarMessage: String? = null,
-    val isErrorSnackbar: Boolean = false
+    val isErrorSnackbar: Boolean = false,
+    // Fluxo Novo Grupo (novo_grupo.png, novo_grupo_selecionar_contatos.png, novo_grupo_finalizar.png)
+    val isNewGroupVisible: Boolean = false,
+    val isGroupContactPickerSheetOpen: Boolean = false,
+    val isCreatingContactFromGroupPicker: Boolean = false,
+    val groupNameInput: String = "",
+    val groupConfirmedMemberIds: Set<String> = emptySet(),
+    val groupPickerSelectedIds: Set<String> = emptySet(),
+    val groupPickerSearchQuery: String = ""
 ) {
     val filteredSigners: List<User>
         get() {
@@ -49,6 +57,26 @@ data class SignerManagementUiState(
             }
         }
 
+    val filteredGroupPickerSigners: List<User>
+        get() {
+            val q = groupPickerSearchQuery.trim().lowercase()
+            val sorted = allSigners.sortedBy { preferredGroupContactOrder(it.name) }
+            if (q.isEmpty()) return sorted
+            return sorted.filter { user ->
+                user.name.lowercase().contains(q) ||
+                    user.email.lowercase().contains(q) ||
+                    user.groupName.lowercase().contains(q)
+            }
+        }
+
+    val groupConfirmedMembers: List<User>
+        get() = allSigners
+            .filter { it.id in groupConfirmedMemberIds }
+            .sortedBy { preferredGroupContactOrder(it.name) }
+
+    val canCreateGroup: Boolean
+        get() = groupNameInput.trim().isNotBlank() && groupConfirmedMemberIds.isNotEmpty()
+
     val validationErrorCount: Int
         get() = listOfNotNull(cpfCnpjError, nameError, emailError, birthDateError).size
 
@@ -58,6 +86,15 @@ data class SignerManagementUiState(
             validationErrorCount == 1 -> "Corrija 1 campo para salvar o contato."
             else -> "Corrija $validationErrorCount campos para salvar o contato."
         }
+
+    private fun preferredGroupContactOrder(name: String): Int = when {
+        name.startsWith("Marina", ignoreCase = true) -> 0
+        name.startsWith("Rafael", ignoreCase = true) -> 1
+        name.startsWith("Beatriz", ignoreCase = true) -> 2
+        name.startsWith("Camila", ignoreCase = true) -> 3
+        name.startsWith("Lucas", ignoreCase = true) -> 4
+        else -> 10
+    }
 }
 
 @HiltViewModel
@@ -90,6 +127,27 @@ class SignerManagementViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isFormVisible = true,
+                isCreatingContactFromGroupPicker = false,
+                editingSignerId = null,
+                personType = PersonType.FISICA,
+                cpfCnpj = "",
+                name = "",
+                email = "",
+                birthDate = "",
+                cpfCnpjError = null,
+                nameError = null,
+                emailError = null,
+                birthDateError = null
+            )
+        }
+    }
+
+    fun onOpenCreateFormFromGroupPicker() {
+        _uiState.update {
+            it.copy(
+                isGroupContactPickerSheetOpen = false,
+                isFormVisible = true,
+                isCreatingContactFromGroupPicker = true,
                 editingSignerId = null,
                 personType = PersonType.FISICA,
                 cpfCnpj = "",
@@ -108,6 +166,7 @@ class SignerManagementViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isFormVisible = true,
+                isCreatingContactFromGroupPicker = false,
                 editingSignerId = signer.id,
                 personType = signer.personType,
                 cpfCnpj = signer.cpfCnpj,
@@ -123,15 +182,137 @@ class SignerManagementViewModel @Inject constructor(
     }
 
     fun onDismissForm() {
+        _uiState.update { state ->
+            if (state.isCreatingContactFromGroupPicker) {
+                state.copy(
+                    isFormVisible = false,
+                    isCreatingContactFromGroupPicker = false,
+                    isNewGroupVisible = true,
+                    isGroupContactPickerSheetOpen = true,
+                    editingSignerId = null,
+                    cpfCnpjError = null,
+                    nameError = null,
+                    emailError = null,
+                    birthDateError = null
+                )
+            } else {
+                state.copy(
+                    isFormVisible = false,
+                    editingSignerId = null,
+                    cpfCnpjError = null,
+                    nameError = null,
+                    emailError = null,
+                    birthDateError = null
+                )
+            }
+        }
+    }
+
+    // --- Fluxo Novo Grupo ---
+
+    fun onOpenNewGroupFlow() {
         _uiState.update {
             it.copy(
-                isFormVisible = false,
-                editingSignerId = null,
-                cpfCnpjError = null,
-                nameError = null,
-                emailError = null,
-                birthDateError = null
+                isNewGroupVisible = true,
+                isGroupContactPickerSheetOpen = false,
+                groupNameInput = "",
+                groupConfirmedMemberIds = emptySet(),
+                groupPickerSelectedIds = emptySet(),
+                groupPickerSearchQuery = ""
             )
+        }
+    }
+
+    fun onDismissNewGroupFlow() {
+        _uiState.update {
+            it.copy(
+                isNewGroupVisible = false,
+                isGroupContactPickerSheetOpen = false,
+                groupNameInput = "",
+                groupConfirmedMemberIds = emptySet(),
+                groupPickerSelectedIds = emptySet(),
+                groupPickerSearchQuery = ""
+            )
+        }
+    }
+
+    fun onGroupNameChanged(newGroupName: String) {
+        _uiState.update { it.copy(groupNameInput = newGroupName) }
+    }
+
+    fun onOpenGroupContactPickerSheet() {
+        _uiState.update { state ->
+            state.copy(
+                isGroupContactPickerSheetOpen = true,
+                groupPickerSelectedIds = state.groupConfirmedMemberIds,
+                groupPickerSearchQuery = ""
+            )
+        }
+    }
+
+    fun onDismissGroupContactPickerSheet() {
+        _uiState.update { it.copy(isGroupContactPickerSheetOpen = false) }
+    }
+
+    fun onGroupPickerSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(groupPickerSearchQuery = query) }
+    }
+
+    fun onToggleGroupPickerContact(signerId: String) {
+        _uiState.update { state ->
+            val current = state.groupPickerSelectedIds
+            val updated = if (signerId in current) current - signerId else current + signerId
+            state.copy(groupPickerSelectedIds = updated)
+        }
+    }
+
+    fun onConfirmGroupPickerSelection() {
+        _uiState.update { state ->
+            state.copy(
+                groupConfirmedMemberIds = state.groupPickerSelectedIds,
+                isGroupContactPickerSheetOpen = false,
+                groupPickerSearchQuery = ""
+            )
+        }
+    }
+
+    fun onToggleConfirmedGroupMember(signerId: String) {
+        _uiState.update { state ->
+            val current = state.groupConfirmedMemberIds
+            val updated = if (signerId in current) current - signerId else current + signerId
+            state.copy(groupConfirmedMemberIds = updated)
+        }
+    }
+
+    fun onCreateGroup() {
+        val state = _uiState.value
+        val trimmedGroupName = state.groupNameInput.trim()
+        if (trimmedGroupName.isBlank() || state.groupConfirmedMemberIds.isEmpty()) return
+
+        viewModelScope.launch {
+            when (val res = saveSignerUseCase.createGroup(trimmedGroupName, state.groupConfirmedMemberIds)) {
+                is AppResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isNewGroupVisible = false,
+                            isGroupContactPickerSheetOpen = false,
+                            groupNameInput = "",
+                            groupConfirmedMemberIds = emptySet(),
+                            groupPickerSelectedIds = emptySet(),
+                            snackbarMessage = "Grupo \"$trimmedGroupName\" criado com sucesso.",
+                            isErrorSnackbar = false
+                        )
+                    }
+                }
+                is AppResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            snackbarMessage = res.message,
+                            isErrorSnackbar = true
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -227,14 +408,29 @@ class SignerManagementViewModel @Inject constructor(
                 )
             ) {
                 is AppResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isSaving = false,
-                            isFormVisible = false,
-                            editingSignerId = null,
-                            snackbarMessage = "Contato salvo com sucesso.",
-                            isErrorSnackbar = false
-                        )
+                    val createdUser = result.data
+                    _uiState.update { state ->
+                        if (state.isCreatingContactFromGroupPicker) {
+                            state.copy(
+                                isSaving = false,
+                                isFormVisible = false,
+                                isCreatingContactFromGroupPicker = false,
+                                isNewGroupVisible = true,
+                                isGroupContactPickerSheetOpen = true,
+                                groupPickerSelectedIds = state.groupPickerSelectedIds + createdUser.id,
+                                editingSignerId = null,
+                                snackbarMessage = "Contato salvo com sucesso.",
+                                isErrorSnackbar = false
+                            )
+                        } else {
+                            state.copy(
+                                isSaving = false,
+                                isFormVisible = false,
+                                editingSignerId = null,
+                                snackbarMessage = "Contato salvo com sucesso.",
+                                isErrorSnackbar = false
+                            )
+                        }
                     }
                 }
                 is AppResult.Error -> {

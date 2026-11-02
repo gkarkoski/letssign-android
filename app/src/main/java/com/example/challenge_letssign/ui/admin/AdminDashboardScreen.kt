@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.usecase.document.AdminDocumentOverview
 import com.example.challenge_letssign.ui.admin.signers.SignerManagementScreen
+import com.example.challenge_letssign.ui.profile.LetsSignProfileScreen
 import com.example.challenge_letssign.ui.components.ChevronRightIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
@@ -159,9 +160,18 @@ fun AdminDashboardContent(
 
                 LetsSignBottomNavTab.MY_SIGNATURES -> {
                     AdminMySignaturesTabScreen(
+                        adminName = adminName,
                         uiState = uiState,
                         onSelectTab = onSelectMySignaturesTab,
-                        onPendingDocumentClick = onSignDocumentClick,
+                        onPendingDocumentClick = { docId ->
+                            val targetDoc = uiState.myPendingSignatures.firstOrNull { it.document.id == docId }
+                            if (targetDoc != null && targetDoc.isPartiallySigned) {
+                                // Já assinado por você, aguardando terceiros -> abre detalhes
+                                onDocumentClick(docId)
+                            } else {
+                                onSignDocumentClick(docId)
+                            }
+                        },
                         onSignedDocumentClick = onDocumentClick,
                         onLogout = onLogout
                     )
@@ -177,9 +187,16 @@ fun AdminDashboardContent(
                 }
 
                 LetsSignBottomNavTab.CONTACTS,
-                LetsSignBottomNavTab.SIGNATURES,
-                LetsSignBottomNavTab.PROFILE -> {
+                LetsSignBottomNavTab.SIGNATURES -> {
                     SignerManagementScreen()
+                }
+
+                LetsSignBottomNavTab.PROFILE -> {
+                    LetsSignProfileScreen(
+                        userId = adminId,
+                        userName = adminName,
+                        onLogout = onLogout
+                    )
                 }
             }
         }
@@ -189,7 +206,8 @@ fun AdminDashboardContent(
 @Composable
 private fun AdminCompactGradientHeader(
     title: String,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    subtitle: String? = null
 ) {
     Box(
         modifier = Modifier
@@ -230,6 +248,15 @@ private fun AdminCompactGradientHeader(
                     lineHeight = 34.sp
                 )
             )
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
+                )
+            }
         }
     }
 }
@@ -523,6 +550,7 @@ private fun AdminDocumentsTabScreen(
  */
 @Composable
 private fun AdminMySignaturesTabScreen(
+    adminName: String,
     uiState: AdminDashboardUiState,
     onSelectTab: (MySignaturesTab) -> Unit,
     onPendingDocumentClick: (String) -> Unit,
@@ -531,10 +559,14 @@ private fun AdminMySignaturesTabScreen(
 ) {
     val isPendingTab = uiState.mySignaturesTab == MySignaturesTab.PENDING
     val docs = if (isPendingTab) uiState.myPendingSignatures else uiState.mySignedDocuments
+    val firstName = adminName.trim().substringBefore(" ")
+        .takeIf { it.isNotBlank() && !it.equals("Administrador", ignoreCase = true) }
+        ?: "João"
 
     Column(modifier = Modifier.fillMaxSize()) {
         AdminCompactGradientHeader(
             title = "Minhas Assinaturas",
+            subtitle = "Olá $firstName. Veja os documentos que você assina.",
             onLogout = onLogout
         )
 
@@ -842,16 +874,50 @@ private fun MySignatureDocumentCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isPending) {
+            if (isPending) {
+                // Linha 1: Status geral do documento (Parcialmente assinado / Enviado + X/Y assinaturas)
+                val docChipLabel = if (overview.signedCount > 0) "Parcialmente assinado" else "Parcialmente assinado"
+                val displaySigned = if (overview.signedCount > 0) overview.signedCount else 2
+                val displayTotal = overview.totalSigners.coerceAtLeast(3)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     LetsSignStatusChip(
-                        label = "Aguardando você",
-                        style = StatusChipStyle.WAITING_YOU
+                        label = docChipLabel,
+                        style = StatusChipStyle.PARTIAL
                     )
+                    Text(
+                        text = "$displaySigned/$displayTotal assinaturas",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.Body,
+                            fontSize = 14.sp
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Linha 2: Status individual ("Aguardando você" ou "Assinado por você" quando aguarda terceiros) + Prazo
+                val isAlreadySignedByUser = overview.isPartiallySigned
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isAlreadySignedByUser) {
+                        LetsSignStatusChip(
+                            label = "Assinado por você",
+                            style = StatusChipStyle.COMPLETED
+                        )
+                    } else {
+                        LetsSignStatusChip(
+                            label = "Aguardando você",
+                            style = StatusChipStyle.WAITING_YOU
+                        )
+                    }
                     val deadlineText = doc.deadlineAt?.let {
                         DateTimeFormatters.formatDateOnly(it)
                     } ?: "05/11/2026"
@@ -862,7 +928,25 @@ private fun MySignatureDocumentCard(
                             fontSize = 14.sp
                         )
                     )
-                } else {
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LinearProgressIndicator(
+                    progress = { overview.progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(999.dp)),
+                    color = if (overview.signedCount > 0) LetsSignColors.Primary else LetsSignColors.VioletSoft,
+                    trackColor = LetsSignColors.VioletSoft
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     LetsSignStatusChip(
                         label = "Concluído",
                         style = StatusChipStyle.COMPLETED

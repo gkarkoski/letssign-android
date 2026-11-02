@@ -2,6 +2,7 @@ package com.example.challenge_letssign.ui.signer
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignerDocumentsUseCase
 import com.example.challenge_letssign.domain.usecase.signer.SignerAssignedDocument
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,7 +26,9 @@ data class SignerDashboardUiState(
     val hasError: Boolean = false
 ) {
     val pendingDocuments: List<SignerAssignedDocument>
-        get() = allAssignedDocuments.filter { it.isPendingForMe }
+        get() = allAssignedDocuments.filter {
+            it.isPendingForMe || (it.isSignedByMe && it.document.status == DocumentStatus.PENDING)
+        }
 
     val signedDocuments: List<SignerAssignedDocument>
         get() = allAssignedDocuments.filter { it.isSignedByMe }

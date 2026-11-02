@@ -42,8 +42,13 @@ enum class LetsSignBottomNavTab(val label: String) {
         val figmaPrimaryTabs: List<LetsSignBottomNavTab> = listOf(
             DOCUMENTS,
             MY_SIGNATURES,
-            WAITING_OTHERS,
-            CONTACTS
+            CONTACTS,
+            PROFILE
+        )
+
+        val signerPrimaryTabs: List<LetsSignBottomNavTab> = listOf(
+            MY_SIGNATURES,
+            PROFILE
         )
     }
 }

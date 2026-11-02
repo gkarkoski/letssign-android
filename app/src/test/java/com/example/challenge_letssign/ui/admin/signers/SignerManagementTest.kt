@@ -180,6 +180,35 @@ class SignerManagementTest {
         assertEquals(2, viewModel.uiState.value.filteredSigners.size)
     }
 
+    @Test
+    fun `Novo Grupo - selects contacts, assigns group name and persists groupName on selected contacts`() = runTest(testDispatcher) {
+        viewModel.onOpenNewGroupFlow()
+        assertTrue(viewModel.uiState.value.isNewGroupVisible)
+        assertFalse(viewModel.uiState.value.canCreateGroup)
+
+        viewModel.onGroupNameChanged("Jurídico")
+        assertFalse(viewModel.uiState.value.canCreateGroup)
+
+        // Open contact picker sheet and select s-1 and s-2
+        viewModel.onOpenGroupContactPickerSheet()
+        assertTrue(viewModel.uiState.value.isGroupContactPickerSheetOpen)
+        viewModel.onToggleGroupPickerContact("s-1")
+        viewModel.onToggleGroupPickerContact("s-2")
+        viewModel.onConfirmGroupPickerSelection()
+
+        val stateBeforeCreate = viewModel.uiState.value
+        assertFalse(stateBeforeCreate.isGroupContactPickerSheetOpen)
+        assertEquals(2, stateBeforeCreate.groupConfirmedMembers.size)
+        assertTrue(stateBeforeCreate.canCreateGroup)
+
+        viewModel.onCreateGroup()
+
+        val afterCreate = viewModel.uiState.value
+        assertFalse(afterCreate.isNewGroupVisible)
+        assertEquals("Grupo \"Jurídico\" criado com sucesso.", afterCreate.snackbarMessage)
+        assertTrue(afterCreate.allSigners.all { it.groupName == "Jurídico" })
+    }
+
     private class FakeSignerUserRepository : UserRepository {
         private val usersFlow = MutableStateFlow(
             listOf(

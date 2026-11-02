@@ -157,7 +157,7 @@ fun LetsSignAiButton(
             text = text,
             style = MaterialTheme.typography.labelMedium.copy(
                 color = LetsSignColors.Primary,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold
             )
         )
     }
