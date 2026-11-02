@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -128,10 +130,14 @@ fun LetsSignNavHost(
         ) { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId").orEmpty()
             val userName = backStackEntry.arguments?.getString("userName").orEmpty()
+            val openSignedTab by backStackEntry.savedStateHandle
+                .getStateFlow("select_signed_tab", false)
+                .collectAsStateWithLifecycle()
 
             AdminDashboardScreen(
                 adminId = userId,
                 adminName = userName,
+                openMySignedTabSignal = openSignedTab,
                 onLogout = {
                     navController.navigate(LetsSignRoutes.LOGIN) {
                         popUpTo(0) { inclusive = true }
@@ -144,6 +150,7 @@ fun LetsSignNavHost(
                     navController.navigate(LetsSignRoutes.documentDetails(documentId))
                 },
                 onSignDocumentClick = { documentId ->
+                    backStackEntry.savedStateHandle["select_signed_tab"] = false
                     navController.navigate(
                         LetsSignRoutes.signerDocumentSign(
                             documentId = documentId,
@@ -262,16 +269,25 @@ fun LetsSignNavHost(
         ) { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId").orEmpty()
             val userName = backStackEntry.arguments?.getString("userName").orEmpty()
+            val openSignedTab by backStackEntry.savedStateHandle
+                .getStateFlow("select_signed_tab", false)
+                .collectAsStateWithLifecycle()
 
             SignerDashboardScreen(
                 signerId = userId,
                 signerName = userName,
+                initialTab = if (openSignedTab) {
+                    com.example.challenge_letssign.ui.signer.SignerDocumentTab.SIGNED
+                } else {
+                    com.example.challenge_letssign.ui.signer.SignerDocumentTab.PENDING
+                },
                 onLogout = {
                     navController.navigate(LetsSignRoutes.LOGIN) {
                         popUpTo(0) { inclusive = true }
                     }
                 },
                 onOpenDocumentForSigning = { docId ->
+                    backStackEntry.savedStateHandle["select_signed_tab"] = false
                     navController.navigate(LetsSignRoutes.signerDocumentSign(docId, userId))
                 },
                 onOpenSignedDocumentDetails = { docId ->
@@ -294,9 +310,11 @@ fun LetsSignNavHost(
                 documentId = documentId,
                 signerId = signerId,
                 onBack = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set("select_signed_tab", false)
                     navController.popBackStack()
                 },
                 onViewSignedDocuments = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set("select_signed_tab", true)
                     navController.popBackStack()
                 }
             )

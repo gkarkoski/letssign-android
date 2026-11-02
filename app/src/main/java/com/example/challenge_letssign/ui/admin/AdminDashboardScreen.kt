@@ -75,6 +75,7 @@ enum class AdminDocumentTab(val title: String) {
 fun AdminDashboardScreen(
     adminId: String,
     adminName: String,
+    openMySignedTabSignal: Boolean = false,
     onLogout: () -> Unit,
     onNewDocumentClick: () -> Unit = {},
     onDocumentClick: (String) -> Unit = {},
@@ -85,6 +86,12 @@ fun AdminDashboardScreen(
 
     LaunchedEffect(adminId) {
         viewModel.observeDocumentsForAdmin(adminId)
+    }
+
+    LaunchedEffect(openMySignedTabSignal) {
+        if (openMySignedTabSignal) {
+            viewModel.onSelectMySignaturesTab(MySignaturesTab.SIGNED)
+        }
     }
 
     AdminDashboardContent(

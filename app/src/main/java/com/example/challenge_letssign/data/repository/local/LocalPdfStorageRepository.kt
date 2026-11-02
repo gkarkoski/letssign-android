@@ -108,6 +108,27 @@ class LocalPdfStorageRepository @Inject constructor(
             }
         }
 
+    override suspend fun exportSignedPdfToDownloads(
+        internalFileName: String,
+        targetDisplayName: String
+    ): AppResult<File> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao baixar documento assinado.") {
+            val sourceFile = File(context.filesDir, internalFileName)
+            if (!sourceFile.exists()) {
+                throw IllegalStateException("Arquivo PDF não encontrado: $internalFileName")
+            }
+            val downloadsDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                ?: File(context.filesDir, "downloads")
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val safeName = targetDisplayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val destFile = File(downloadsDir, safeName)
+            sourceFile.copyTo(destFile, overwrite = true)
+            destFile
+        }
+    }
+
     /**
      * Renderização no PDF (PDFBox - Milestone 7):
      * 1. Carregar arquivo original via PDDocument.load().

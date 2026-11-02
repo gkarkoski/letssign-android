@@ -14,4 +14,9 @@ interface PdfStorageRepository {
         fields: List<SignatureField>,
         signaturePngBytes: ByteArray
     ): AppResult<Unit>
+
+    suspend fun exportSignedPdfToDownloads(
+        internalFileName: String,
+        targetDisplayName: String
+    ): AppResult<File> = getPdfFile(internalFileName)
 }
