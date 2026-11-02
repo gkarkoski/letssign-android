@@ -9,6 +9,7 @@ import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.usecase.document.SendDocumentForSignatureUseCase
 import com.example.challenge_letssign.utils.AppResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,14 +24,23 @@ data class DocumentReviewUiState(
     val inviteMessage: String = Document.DEFAULT_INVITE_MESSAGE,
     val isSending: Boolean = false,
     val errorMessage: String? = null,
-    val isSentSuccess: Boolean = false
+    val isSentSuccess: Boolean = false,
+    val sentTimestampMillis: Long = System.currentTimeMillis()
 ) {
-    val canSend: Boolean
+    val signersWithoutFields: List<DocumentSignerWithUser>
         get() {
-            if (isSending || signers.isEmpty()) return false
             val signersWithFields = fields.map { it.signerId }.toSet()
-            return signers.all { it.signer.id in signersWithFields }
+            return signers.filterNot { it.signer.id in signersWithFields }
         }
+
+    val hasPendingFieldError: Boolean
+        get() = signers.isNotEmpty() && signersWithoutFields.isNotEmpty()
+
+    val canSend: Boolean
+        get() = !isSending && signers.isNotEmpty() && signersWithoutFields.isEmpty()
+
+    val distinctPagesCount: Int
+        get() = fields.map { it.pageNumber }.distinct().size
 }
 
 @HiltViewModel
@@ -41,6 +51,8 @@ class DocumentReviewViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(DocumentReviewUiState())
     val uiState: StateFlow<DocumentReviewUiState> = _uiState.asStateFlow()
+
+    var sendingDelayMillis: Long = 2000L
 
     private var loadedDocumentId: String? = null
 
@@ -88,12 +100,24 @@ class DocumentReviewViewModel @Inject constructor(
         if (currentState.isSending) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSending = true, errorMessage = null) }
+            val nowMillis = System.currentTimeMillis()
+            _uiState.update {
+                it.copy(
+                    isSending = true,
+                    errorMessage = null,
+                    sentTimestampMillis = nowMillis
+                )
+            }
+
+            if (sendingDelayMillis > 0L) {
+                delay(sendingDelayMillis)
+            }
 
             when (
                 val result = sendDocumentForSignatureUseCase(
                     documentId = docId,
-                    inviteMessage = currentState.inviteMessage
+                    inviteMessage = currentState.inviteMessage,
+                    sentAtMillis = nowMillis
                 )
             ) {
                 is AppResult.Success -> {
@@ -114,6 +138,10 @@ class DocumentReviewViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun onReturnToReviewFromError() {
+        _uiState.update { it.copy(errorMessage = null) }
     }
 
     fun onSentNavigationHandled() {

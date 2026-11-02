@@ -1,7 +1,6 @@
 package com.example.challenge_letssign.domain.usecase.document
 
 import com.example.challenge_letssign.domain.model.Document
-import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.repository.DocumentRepository
@@ -16,7 +15,8 @@ import javax.inject.Inject
 data class AdminDocumentOverview(
     val document: Document,
     val totalSigners: Int,
-    val signedCount: Int
+    val signedCount: Int,
+    val signerNames: List<String> = emptyList()
 ) {
     val isDraft: Boolean
         get() = document.status == DocumentStatus.DRAFT
@@ -49,10 +49,12 @@ class ObserveAdminDocumentOverviewsUseCase @Inject constructor(
                         documentRepository.observeDocumentSigners(doc.id).map { signers ->
                             val total = signers.size
                             val signed = signers.count { it.documentSigner.status == SignatureStatus.SIGNED }
+                            val names = signers.map { it.signer.name }
                             AdminDocumentOverview(
                                 document = doc,
                                 totalSigners = total,
-                                signedCount = signed
+                                signedCount = signed,
+                                signerNames = names
                             )
                         }
                     }

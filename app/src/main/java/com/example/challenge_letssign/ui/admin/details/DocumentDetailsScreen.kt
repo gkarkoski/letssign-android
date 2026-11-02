@@ -1,5 +1,6 @@
 package com.example.challenge_letssign.ui.admin.details
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,25 +34,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureStatus
-import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.ui.components.CheckIcon
-import com.example.challenge_letssign.ui.components.CloseIcon
+import com.example.challenge_letssign.ui.components.ClockIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
+import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
 import com.example.challenge_letssign.ui.components.LetsSignPrimaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSecondaryButton
+import com.example.challenge_letssign.ui.components.LetsSignSkeletonCard
+import com.example.challenge_letssign.ui.components.LetsSignSnackbar
+import com.example.challenge_letssign.ui.components.LetsSignSnackbarType
 import com.example.challenge_letssign.ui.components.LetsSignStatusChip
 import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.components.TrashIcon
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
+import kotlinx.coroutines.delay
 
 @Composable
 fun DocumentDetailsScreen(
@@ -73,12 +81,23 @@ fun DocumentDetailsScreen(
         }
     }
 
+    LaunchedEffect(uiState.snackbarMessage) {
+        if (uiState.snackbarMessage != null && uiState.snackbarActionLabel == null) {
+            delay(3500)
+            viewModel.onDismissSnackbar()
+        }
+    }
+
     DocumentDetailsContent(
         uiState = uiState,
         onBack = onBack,
         onEditDraftSignersAndFile = { onEditDraftSignersAndFile(documentId) },
         onOpenPositioningOrViewPdf = { onOpenPositioningOrViewPdf(documentId) },
-        onDeleteDraft = viewModel::onDeleteDraftDocument
+        onResendReminder = viewModel::onResendReminder,
+        onDownloadSignedDocument = viewModel::onDownloadSignedDocument,
+        onRetryLoad = viewModel::onRetryLoad,
+        onDeleteDraft = viewModel::onDeleteDraftDocument,
+        onDismissSnackbar = viewModel::onDismissSnackbar
     )
 }
 
@@ -88,381 +107,560 @@ fun DocumentDetailsContent(
     onBack: () -> Unit,
     onEditDraftSignersAndFile: () -> Unit = {},
     onOpenPositioningOrViewPdf: () -> Unit,
+    onResendReminder: () -> Unit = {},
+    onDownloadSignedDocument: () -> Unit = {},
+    onRetryLoad: () -> Unit = {},
     onDeleteDraft: () -> Unit,
+    onDismissSnackbar: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val doc = uiState.document
+    val isCompleted = doc?.status == DocumentStatus.COMPLETED ||
+        (uiState.totalSigners > 0 && uiState.signedCount == uiState.totalSigners)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = LetsSignColors.Mist,
         topBar = {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
+                    .background(LetsSignColors.Mist)
                     .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable(onClick = onBack)
-                                .padding(6.dp)
-                        ) {
-                            CloseIcon(color = LetsSignColors.Primary, size = 20.dp)
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onBack)
+                            .padding(6.dp)
+                    ) {
                         Text(
-                            text = "Detalhes do Documento",
-                            style = MaterialTheme.typography.headlineMedium
+                            text = "‹",
+                            fontSize = 26.sp,
+                            color = LetsSignColors.Ink
                         )
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Detalhe do documento",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                }
 
-                    // Regra 4: Só mostra botão de excluir se estiver em DRAFT
-                    if (uiState.isDraft) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable(onClick = onDeleteDraft)
-                                .padding(8.dp)
-                        ) {
-                            TrashIcon(color = LetsSignColors.Error, size = 20.dp)
-                        }
+                // Regra 4: Só mostra botão de excluir se estiver em DRAFT
+                if (uiState.isDraft) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onDeleteDraft)
+                            .padding(8.dp)
+                    ) {
+                        TrashIcon(color = LetsSignColors.Error, size = 20.dp)
                     }
                 }
             }
         },
         bottomBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .navigationBarsPadding()
-            ) {
-                HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    LetsSignSecondaryButton(
-                        text = "Voltar",
-                        onClick = onBack,
-                        modifier = Modifier.weight(0.4f)
-                    )
-                    // Regra 4 e Slide 17/19:
-                    // - Se DRAFT: permite editar signatários ou posicionar assinaturas
-                    // - Se COMPLETED: destaca "Ver documento final (PDF)"
-                    // - Se PENDING: "Visualizar PDF"
-                    if (uiState.isDraft) {
-                        LetsSignSecondaryButton(
-                            text = "Signatários",
-                            onClick = onEditDraftSignersAndFile,
-                            modifier = Modifier.weight(0.35f)
-                        )
-                        LetsSignPrimaryButton(
-                            text = "Posicionar",
-                            onClick = onOpenPositioningOrViewPdf,
-                            modifier = Modifier.weight(0.45f)
-                        )
-                    } else {
-                        val isCompleted = doc?.status == DocumentStatus.COMPLETED
-                        LetsSignPrimaryButton(
-                            text = if (isCompleted) "Ver documento final (PDF)" else "Visualizar PDF",
-                            onClick = onOpenPositioningOrViewPdf,
-                            modifier = Modifier.weight(0.6f)
-                        )
+            if (!uiState.isLoading && !uiState.hasError && doc != null) {
+                when {
+                    uiState.isDraft -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White)
+                                .navigationBarsPadding()
+                        ) {
+                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                LetsSignSecondaryButton(
+                                    text = "Signatários",
+                                    onClick = onEditDraftSignersAndFile,
+                                    modifier = Modifier.weight(0.45f)
+                                )
+                                LetsSignPrimaryButton(
+                                    text = "Posicionar",
+                                    onClick = onOpenPositioningOrViewPdf,
+                                    modifier = Modifier.weight(0.55f)
+                                )
+                            }
+                        }
+                    }
+
+                    !isCompleted -> {
+                        // Detalhe Enviado.png e Detalhe Parcial.png: "Reenviar lembrete" / "Reenviar lembrete para Beatriz"
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White)
+                                .navigationBarsPadding()
+                        ) {
+                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                            ) {
+                                LetsSignSecondaryButton(
+                                    text = uiState.reminderButtonLabel,
+                                    onClick = onResendReminder,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+
+                    isCompleted && !uiState.isDownloaded -> {
+                        // Detalhe Concluído.png: "Baixar documento assinado"
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White)
+                                .navigationBarsPadding()
+                        ) {
+                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                            ) {
+                                LetsSignPrimaryButton(
+                                    text = "Baixar documento assinado",
+                                    onClick = onDownloadSignedDocument,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            if (doc != null) {
-                val (chipLabel, chipStyle, barColor) = when {
-                    doc.status == DocumentStatus.DRAFT -> Triple(
-                        "Rascunho",
-                        StatusChipStyle.DRAFT,
-                        LetsSignColors.VioletSoft
-                    )
-                    doc.status == DocumentStatus.COMPLETED -> Triple(
-                        "Concluído",
-                        StatusChipStyle.COMPLETED,
-                        LetsSignColors.Success
-                    )
-                    uiState.signedCount > 0 -> Triple(
-                        "Parcialmente assinado",
-                        StatusChipStyle.PARTIAL,
-                        LetsSignColors.Primary
-                    )
-                    else -> Triple(
-                        "Enviado",
-                        StatusChipStyle.SENT,
-                        LetsSignColors.Primary
-                    )
-                }
-
-                // Card Principal do Documento
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color.White,
-                    shadowElevation = 3.dp
-                ) {
+            when {
+                uiState.isLoading -> {
+                    // Detalhe Carregando.png
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, LetsSignColors.Line, RoundedCornerShape(22.dp))
-                            .padding(20.dp)
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(LetsSignColors.VioletSoft),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                DocumentFileIcon(color = LetsSignColors.Primary, size = 26.dp)
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = doc.title,
-                                    style = MaterialTheme.typography.headlineSmall
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = if (doc.status == DocumentStatus.DRAFT) {
-                                        "Criado em ${DateTimeFormatters.formatTimestamp(doc.createdAt)}"
-                                    } else {
-                                        "Enviado em ${DateTimeFormatters.formatTimestamp(doc.sentAt ?: doc.createdAt)}"
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        color = LetsSignColors.Muted
-                                    )
-                                )
-                            }
-                        }
-
-                        if (!doc.inviteMessage.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Box(
+                        LetsSignSkeletonCard()
+                        Box(
+                            modifier = Modifier
+                                .width(120.dp)
+                                .height(14.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(LetsSignColors.Line.copy(alpha = 0.7f))
+                        )
+                        repeat(3) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(LetsSignColors.Mist)
-                                    .padding(12.dp)
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Mensagem do convite: \"${doc.inviteMessage}\"",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = LetsSignColors.Body
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(LetsSignColors.Line.copy(alpha = 0.7f))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.6f)
+                                            .height(14.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(LetsSignColors.Line.copy(alpha = 0.8f))
                                     )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.45f)
+                                            .height(11.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(LetsSignColors.Line.copy(alpha = 0.6f))
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(88.dp)
+                                        .height(28.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(LetsSignColors.Line.copy(alpha = 0.6f))
                                 )
                             }
                         }
+                    }
+                }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LetsSignStatusChip(label = chipLabel, style = chipStyle)
-                            Text(
-                                text = "${uiState.signedCount}/${uiState.totalSigners} assinaturas",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = LetsSignColors.Body
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        val progress = if (uiState.totalSigners <= 0) {
-                            0f
-                        } else {
-                            (uiState.signedCount.toFloat() / uiState.totalSigners.toFloat()).coerceIn(0f, 1f)
-                        }
-                        LinearProgressIndicator(
-                            progress = { progress },
+                uiState.hasError -> {
+                    // Detalhe Erro.png
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(999.dp)),
-                            color = barColor,
-                            trackColor = LetsSignColors.VioletSoft
+                                .size(68.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(LetsSignColors.ErrorSoft),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ErrorCircleIcon(color = LetsSignColors.Error, size = 30.dp)
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "Não foi possível carregar",
+                            style = MaterialTheme.typography.headlineMedium,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Verifique sua conexão e tente novamente. Nada foi alterado no documento.",
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = LetsSignColors.Muted
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(22.dp))
+                        LetsSignPrimaryButton(
+                            text = "Tentar novamente",
+                            onClick = onRetryLoad,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                // Seção: Quem já assinou e quem falta
-                Text(
-                    text = "Signatários (${uiState.signedCount} de ${uiState.totalSigners} assinaram)",
-                    style = MaterialTheme.typography.headlineSmall
-                )
+                doc != null -> {
+                    val (chipLabel, chipStyle, barColor) = when {
+                        doc.status == DocumentStatus.DRAFT -> Triple(
+                            "Rascunho",
+                            StatusChipStyle.DRAFT,
+                            LetsSignColors.VioletSoft
+                        )
+                        isCompleted -> Triple(
+                            "Concluído",
+                            StatusChipStyle.COMPLETED,
+                            LetsSignColors.Success
+                        )
+                        uiState.signedCount > 0 -> Triple(
+                            "Parcialmente assinado",
+                            StatusChipStyle.PARTIAL,
+                            LetsSignColors.Primary
+                        )
+                        else -> Triple(
+                            "Enviado",
+                            StatusChipStyle.SENT,
+                            LetsSignColors.VioletSoft
+                        )
+                    }
 
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    uiState.signers.forEach { item ->
-                        val isSigned = item.documentSigner.status == SignatureStatus.SIGNED
-                        val roleLabel = when (item.documentSigner.roleClass) {
-                            SignerRoleClass.CONTRATANTE -> "Contratante"
-                            SignerRoleClass.CONTRATADO -> "Contratado"
-                            SignerRoleClass.TESTEMUNHA -> "Testemunha"
-                        }
-
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                start = 24.dp,
+                                end = 24.dp,
+                                top = 8.dp,
+                                bottom = if (uiState.isDownloaded) 96.dp else 28.dp
+                            )
+                    ) {
+                        // Card Principal do Documento (clicável para abrir e visualizar o PDF!)
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(22.dp))
+                                .clickable(onClick = onOpenPositioningOrViewPdf),
+                            shape = RoundedCornerShape(22.dp),
                             color = Color.White,
                             shadowElevation = 2.dp
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .border(1.dp, LetsSignColors.Line, RoundedCornerShape(16.dp))
-                                    .padding(16.dp)
+                                    .border(1.dp, LetsSignColors.Line, RoundedCornerShape(22.dp))
+                                    .padding(20.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    LetsSignAvatar(fullName = item.signer.name)
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(LetsSignColors.VioletSoft),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        DocumentFileIcon(color = LetsSignColors.Primary, size = 24.dp)
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = item.signer.name,
-                                            style = MaterialTheme.typography.titleMedium
+                                            text = doc.title,
+                                            style = MaterialTheme.typography.headlineSmall
                                         )
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = item.signer.email,
-                                            style = MaterialTheme.typography.bodySmall.copy(
+                                            text = "${doc.effectiveDisplayFileName} · ${doc.pageCount} páginas",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
                                                 color = LetsSignColors.Muted,
-                                                fontSize = 14.sp
+                                                fontSize = 15.sp
                                             )
                                         )
                                     }
-                                    LetsSignStatusChip(
-                                        label = if (isSigned) "Assinado" else "Pendente",
-                                        style = if (isSigned) StatusChipStyle.COMPLETED else StatusChipStyle.SENT
-                                    )
                                 }
 
-                                Spacer(modifier = Modifier.height(10.dp))
-                                HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(18.dp))
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    LetsSignStatusChip(
-                                        label = roleLabel,
-                                        style = StatusChipStyle.ROLE
-                                    )
-                                    if (isSigned && item.documentSigner.signedAt != null) {
-                                        Text(
-                                            text = "Assinado em ${DateTimeFormatters.formatTimestamp(item.documentSigner.signedAt)}" +
-                                                (item.documentSigner.signatureIp?.let { " · IP $it" } ?: ""),
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                color = LetsSignColors.Success,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
+                                    LetsSignStatusChip(label = chipLabel, style = chipStyle)
+                                    Text(
+                                        text = "${uiState.signedCount} de ${uiState.totalSigners} assinaturas",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            color = LetsSignColors.Ink,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp
                                         )
-                                    } else {
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                val progress = if (uiState.totalSigners <= 0) {
+                                    0f
+                                } else {
+                                    (uiState.signedCount.toFloat() / uiState.totalSigners.toFloat()).coerceIn(0f, 1f)
+                                }
+                                LinearProgressIndicator(
+                                    progress = { if (isCompleted) 1f else progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(999.dp)),
+                                    color = barColor,
+                                    trackColor = LetsSignColors.VioletSoft
+                                )
+                            }
+                        }
+
+                        // Banner Verde de Download (Detalhe Baixado.png)
+                        if (uiState.isDownloaded) {
+                            Spacer(modifier = Modifier.height(18.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(LetsSignColors.SuccessSoft)
+                                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .border(1.5.dp, LetsSignColors.SuccessText, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CheckIcon(color = LetsSignColors.SuccessText, size = 12.dp)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Documento assinado salvo em Downloads: ${uiState.downloadedFileName ?: "documento-assinado.pdf"}",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        color = LetsSignColors.SuccessText,
+                                        fontSize = 16.sp,
+                                        lineHeight = 24.sp
+                                    )
+                                )
+                            }
+                        } else {
+                            // Seção Signatários (Detalhe Enviado, Parcial, Concluído)
+                            Spacer(modifier = Modifier.height(22.dp))
+                            Text(
+                                text = "Signatários (${uiState.totalSigners})",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            uiState.signers.forEachIndexed { index, item ->
+                                val isSigned = item.documentSigner.status == SignatureStatus.SIGNED
+                                val roleLabel = item.documentSigner.roleClass.displayLabel
+                                val subtitle = if (isSigned && item.documentSigner.signedAt != null) {
+                                    "$roleLabel · Assinou em\n${DateTimeFormatters.formatTimestampWithAs(item.documentSigner.signedAt)}"
+                                } else {
+                                    val sentDate = DateTimeFormatters.formatDateOnly(doc.sentAt ?: doc.createdAt)
+                                    "$roleLabel · Convite\nenviado em $sentDate"
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    LetsSignAvatar(fullName = item.signer.name, size = 44.dp)
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Aguardando assinatura",
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                color = LetsSignColors.Muted
+                                            text = item.signer.name,
+                                            style = MaterialTheme.typography.headlineSmall.copy(fontSize = 17.sp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = subtitle,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = LetsSignColors.Muted,
+                                                fontSize = 15.sp,
+                                                lineHeight = 22.sp
                                             )
                                         )
                                     }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    LetsSignStatusChip(
+                                        label = if (isSigned) "Assinou" else "Aguardando",
+                                        style = if (isSigned) StatusChipStyle.COMPLETED else StatusChipStyle.WAITING
+                                    )
+                                }
+
+                                if (index < uiState.signers.lastIndex) {
+                                    HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                                }
+                            }
+                        }
+
+                        // Seção Acompanhamento (Linha do Tempo Vertical)
+                        Spacer(modifier = Modifier.height(22.dp))
+                        Text(
+                            text = "Acompanhamento",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        val steps = uiState.timelineSteps
+                        steps.forEachIndexed { idx, step ->
+                            val isLast = idx == steps.lastIndex
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(28.dp)
+                                ) {
+                                    when (step.visualState) {
+                                        TimelineStepVisualState.COMPLETED_CHECK -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(CircleShape)
+                                                    .background(LetsSignColors.SuccessSoft),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CheckIcon(color = LetsSignColors.Success, size = 13.dp)
+                                            }
+                                        }
+                                        TimelineStepVisualState.WAITING_CLOCK -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(CircleShape)
+                                                    .background(LetsSignColors.VioletSoft),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                ClockIcon(color = LetsSignColors.Primary, size = 14.dp)
+                                            }
+                                        }
+                                        TimelineStepVisualState.FUTURE_DASHED -> {
+                                            Box(
+                                                modifier = Modifier.size(26.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Canvas(modifier = Modifier.size(24.dp)) {
+                                                    drawCircle(
+                                                        color = LetsSignColors.Line,
+                                                        style = Stroke(
+                                                            width = 1.5.dp.toPx(),
+                                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (!isLast) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.5.dp)
+                                                .height(34.dp)
+                                                .background(LetsSignColors.Line)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.padding(bottom = if (isLast) 0.dp else 14.dp)) {
+                                    Text(
+                                        text = step.title,
+                                        style = MaterialTheme.typography.headlineSmall.copy(fontSize = 17.sp)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = step.subtitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = LetsSignColors.Muted,
+                                            fontSize = 14.sp
+                                        )
+                                    )
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                // Seção: Histórico de Eventos
-                Text(
-                    text = "Histórico de eventos",
-                    style = MaterialTheme.typography.headlineSmall
-                )
-
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
-                    shadowElevation = 2.dp
+            // Snackbar ("Download concluído · Abrir" em Detalhe Baixado.png ou "Lembrete enviado")
+            if (!uiState.snackbarMessage.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 24.dp, vertical = 18.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, LetsSignColors.Line, RoundedCornerShape(18.dp))
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        uiState.auditEvents.forEach { event ->
-                            Row(verticalAlignment = Alignment.Top) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 3.dp)
-                                        .size(22.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (event.isSuccess) LetsSignColors.SuccessSoft else LetsSignColors.VioletSoft
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (event.isSuccess) {
-                                        CheckIcon(color = LetsSignColors.Success, size = 12.dp)
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(LetsSignColors.Primary)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = event.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp)
-                                    )
-                                    Text(
-                                        text = event.description,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = LetsSignColors.Body,
-                                            fontSize = 14.sp
-                                        )
-                                    )
-                                    Text(
-                                        text = DateTimeFormatters.formatTimestamp(event.timestampMillis),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = LetsSignColors.Muted
-                                        )
-                                    )
-                                }
+                    LetsSignSnackbar(
+                        message = uiState.snackbarMessage,
+                        type = LetsSignSnackbarType.SUCCESS_DARK,
+                        actionLabel = uiState.snackbarActionLabel,
+                        onActionClick = {
+                            if (uiState.snackbarActionLabel == "Abrir") {
+                                onOpenPositioningOrViewPdf()
                             }
+                            onDismissSnackbar()
                         }
-                    }
+                    )
                 }
             }
         }

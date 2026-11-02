@@ -160,6 +160,39 @@ class ReviewAndTrackingTest {
         assertTrue(events.any { it.title.contains("Carlos Silva assinou") && it.description.contains("192.168.0.10") })
     }
 
+    @Test
+    fun `DocumentReviewUiState detects missing signer fields and DocumentDetailsUiState formats Beatriz reminder and timeline`() {
+        val doc = Document("d-2", "Aditivo contratual", "aditivo.pdf", DocumentStatus.PENDING, 1000L, "admin-1")
+        val marina = User("s-1", "Marina Albuquerque", "marina@exemplo.com.br", "", "123", UserRole.SIGNER)
+        val beatriz = User("s-2", "Beatriz Nogueira", "beatriz@exemplo.com.br", "", "123", UserRole.SIGNER)
+
+        val marinaRef = DocumentSigner("d-2", "s-1", SignerRoleClass.CONTRATANTE, SignatureStatus.SIGNED, 2000L, "10.0.0.1")
+        val beatrizRef = DocumentSigner("d-2", "s-2", SignerRoleClass.TESTEMUNHA, SignatureStatus.PENDING)
+        val signersList = listOf(
+            DocumentSignerWithUser(marinaRef, marina),
+            DocumentSignerWithUser(beatrizRef, beatriz)
+        )
+
+        // Review state with only Marina having a field -> Beatriz is flagged in signersWithoutFields
+        val reviewPendingState = DocumentReviewUiState(
+            document = doc.copy(status = DocumentStatus.DRAFT),
+            signers = signersList,
+            fields = listOf(SignatureField("f-1", "d-2", "s-1", 1, 0.1f, 0.6f, 0.3f, 0.08f))
+        )
+        assertTrue(reviewPendingState.hasPendingFieldError)
+        assertFalse(reviewPendingState.canSend)
+        assertEquals("Beatriz Nogueira", reviewPendingState.signersWithoutFields.first().signer.name)
+
+        // Details state for partially signed document (Marina signed, Beatriz pending)
+        val partialDetails = DocumentDetailsUiState(
+            document = doc,
+            signers = signersList
+        )
+        assertEquals("Reenviar lembrete para Beatriz", partialDetails.reminderButtonLabel)
+        assertEquals(4, partialDetails.timelineSteps.size)
+        assertEquals("Aguardando Beatriz Nogueira", partialDetails.timelineSteps[2].title)
+    }
+
     private class FakeReviewDocumentRepository : DocumentRepository {
         private val docsFlow = MutableStateFlow<List<Document>>(emptyList())
         private val signersFlow = MutableStateFlow<List<DocumentSigner>>(emptyList())
