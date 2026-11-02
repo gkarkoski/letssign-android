@@ -4,14 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.SignatureField
+import com.example.challenge_letssign.domain.model.SignatureFieldType
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.domain.usecase.signer.SignDocumentUseCase
+import com.example.challenge_letssign.ui.components.extractInitials
 import com.example.challenge_letssign.utils.AppResult
 import com.example.challenge_letssign.utils.PdfPageRenderer
 import com.example.challenge_letssign.utils.RenderedPdfPage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,9 +23,30 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
+enum class SignWizardStep {
+    STEP_1_READ_DOCUMENT,
+    STEP_2_CAPTURE_SIGNATURE,
+    STEP_2_CAPTURE_INITIALS,
+    STEP_3_CONFIRM,
+    COMPLETED,
+    FAILURE
+}
+
+enum class SignatureCaptureMode {
+    DRAW,
+    TYPE
+}
+
+enum class CursiveFontStyle {
+    DANCING_SCRIPT,
+    CAVEAT,
+    HOMEMADE_APPLE
+}
+
 data class SignerDocumentSignUiState(
     val document: Document? = null,
     val signerId: String = "",
+    val signerName: String = "Rafael Tavares",
     val pdfFile: File? = null,
     val renderedPage: RenderedPdfPage? = null,
     val currentPageIndex: Int = 0,
@@ -30,8 +54,18 @@ data class SignerDocumentSignUiState(
     val isLoadingPage: Boolean = true,
     val myFields: List<SignatureField> = emptyList(),
     val mySignatureStatus: SignatureStatus = SignatureStatus.PENDING,
-    val isDrawingModalOpen: Boolean = false,
+    val wizardStep: SignWizardStep = SignWizardStep.STEP_1_READ_DOCUMENT,
+    val signatureMode: SignatureCaptureMode = SignatureCaptureMode.DRAW,
+    val initialsMode: SignatureCaptureMode = SignatureCaptureMode.DRAW,
+    val typedSignatureText: String = "Rafael Tavares",
+    val typedSignatureFont: CursiveFontStyle = CursiveFontStyle.DANCING_SCRIPT,
+    val typedInitialsText: String = "RT",
+    val typedInitialsFont: CursiveFontStyle = CursiveFontStyle.DANCING_SCRIPT,
+    val capturedSignatureBytes: ByteArray? = null,
+    val capturedInitialsBytes: ByteArray? = null,
     val isSubmittingSignature: Boolean = false,
+    val signedTimestampMillis: Long = System.currentTimeMillis(),
+    val errorMessage: String? = null,
     val snackbarMessage: String? = null,
     val isErrorSnackbar: Boolean = false,
     val isSignedCompleted: Boolean = false
@@ -41,8 +75,36 @@ data class SignerDocumentSignUiState(
             myFields.isNotEmpty() &&
             !isSubmittingSignature
 
+    val isDrawingModalOpen: Boolean
+        get() = wizardStep == SignWizardStep.STEP_2_CAPTURE_SIGNATURE ||
+            wizardStep == SignWizardStep.STEP_2_CAPTURE_INITIALS
+
     val currentPageMyFields: List<SignatureField>
         get() = myFields.filter { it.pageNumber == currentPageIndex }
+
+    val hasInitialsField: Boolean
+        get() = myFields.any { it.fieldType == SignatureFieldType.INITIALS }
+
+    val footerFieldsDescription: String
+        get() {
+            val count = myFields.size
+            return when {
+                count <= 0 -> "Nenhum campo pendente"
+                count == 1 -> "1 campo seu: assinatura"
+                hasInitialsField -> "$count campos seus: assinatura e rubrica"
+                else -> "$count campos seus: assinatura"
+            }
+        }
+
+    val topBarStepSubtitle: String
+        get() = when (wizardStep) {
+            SignWizardStep.STEP_1_READ_DOCUMENT -> "Etapa 1 de 3 · Leia o documento"
+            SignWizardStep.STEP_2_CAPTURE_SIGNATURE -> "Etapa 2 de 3 · Sua assinatura"
+            SignWizardStep.STEP_2_CAPTURE_INITIALS -> "Etapa 2 de 3 · Sua rubrica"
+            SignWizardStep.STEP_3_CONFIRM,
+            SignWizardStep.COMPLETED,
+            SignWizardStep.FAILURE -> "Etapa 3 de 3 · Confirmar"
+        }
 }
 
 @HiltViewModel
@@ -56,6 +118,8 @@ class SignerDocumentSignViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SignerDocumentSignUiState())
     val uiState: StateFlow<SignerDocumentSignUiState> = _uiState.asStateFlow()
 
+    var savingDelayMillis: Long = 2000L
+
     private var loadedKey: String? = null
 
     fun loadForSigning(documentId: String, signerId: String) {
@@ -65,7 +129,6 @@ class SignerDocumentSignViewModel @Inject constructor(
         _uiState.update { it.copy(signerId = signerId) }
 
         viewModelScope.launch {
-            // Busca os campos atribuídos ao usuário logado para focar imediatamente na página correta
             val myFieldsRes = documentRepository.getSignatureFieldsBySigner(documentId, signerId)
             val initialFields = myFieldsRes.getOrNull().orEmpty()
             val targetPage = initialFields.minOfOrNull { it.pageNumber } ?: 0
@@ -101,9 +164,18 @@ class SignerDocumentSignViewModel @Inject constructor(
 
         viewModelScope.launch {
             documentRepository.observeDocumentSigners(documentId).collect { list ->
-                val mySigner = list.firstOrNull { it.signer.id == signerId }?.documentSigner
-                if (mySigner != null) {
-                    _uiState.update { it.copy(mySignatureStatus = mySigner.status) }
+                val myEntry = list.firstOrNull { it.signer.id == signerId }
+                if (myEntry != null) {
+                    val fullName = myEntry.signer.name
+                    val initials = extractInitials(fullName)
+                    _uiState.update { state ->
+                        state.copy(
+                            signerName = fullName,
+                            mySignatureStatus = myEntry.documentSigner.status,
+                            typedSignatureText = if (state.typedSignatureText == "Rafael Tavares") fullName else state.typedSignatureText,
+                            typedInitialsText = if (state.typedInitialsText == "RT") initials else state.typedInitialsText
+                        )
+                    }
                 }
             }
         }
@@ -155,38 +227,133 @@ class SignerDocumentSignViewModel @Inject constructor(
         }
     }
 
+    // --- Etapa 1 -> Etapa 2 (Sua assinatura) ---
+
     fun onOpenDrawingModal() {
         if (!_uiState.value.canSign) return
-        _uiState.update { it.copy(isDrawingModalOpen = true) }
+        _uiState.update {
+            it.copy(
+                wizardStep = SignWizardStep.STEP_2_CAPTURE_SIGNATURE,
+                errorMessage = null
+            )
+        }
     }
 
     fun onDismissDrawingModal() {
         if (_uiState.value.isSubmittingSignature) return
-        _uiState.update { it.copy(isDrawingModalOpen = false) }
+        _uiState.update {
+            it.copy(
+                wizardStep = SignWizardStep.STEP_1_READ_DOCUMENT,
+                errorMessage = null
+            )
+        }
     }
 
-    fun onConfirmDrawnSignature(signaturePngBytes: ByteArray) {
+    fun onSignatureCaptureModeChanged(mode: SignatureCaptureMode) {
+        _uiState.update { it.copy(signatureMode = mode) }
+    }
+
+    fun onTypedSignatureTextChanged(text: String) {
+        _uiState.update { it.copy(typedSignatureText = text) }
+    }
+
+    fun onTypedSignatureFontChanged(font: CursiveFontStyle) {
+        _uiState.update { it.copy(typedSignatureFont = font) }
+    }
+
+    /**
+     * Chamado quando o usuário clica em "Usar assinatura" (Assinar Captura, Desenhada ou Digitar):
+     * guarda os bytes da assinatura e avança para "Sua rubrica" (Assinar Rubrica).
+     */
+    fun onSignatureCapturedAdvanceToInitials(signaturePngBytes: ByteArray) {
+        _uiState.update {
+            it.copy(
+                capturedSignatureBytes = signaturePngBytes,
+                wizardStep = SignWizardStep.STEP_2_CAPTURE_INITIALS
+            )
+        }
+    }
+
+    // --- Etapa 2 (Sua rubrica) -> Etapa 3 (Confirmar) ---
+
+    fun onInitialsCaptureModeChanged(mode: SignatureCaptureMode) {
+        _uiState.update { it.copy(initialsMode = mode) }
+    }
+
+    fun onTypedInitialsTextChanged(text: String) {
+        _uiState.update { it.copy(typedInitialsText = text) }
+    }
+
+    fun onTypedInitialsFontChanged(font: CursiveFontStyle) {
+        _uiState.update { it.copy(typedInitialsFont = font) }
+    }
+
+    /**
+     * Chamado quando o usuário clica em "Usar rubrica" (Assinar Rubrica ou Rubrica Digitar):
+     * guarda os bytes da rubrica e avança para "Confirmar assinatura e rubrica?" (Etapa 3 de 3).
+     */
+    fun onInitialsCapturedAdvanceToConfirm(initialsPngBytes: ByteArray) {
+        _uiState.update {
+            it.copy(
+                capturedInitialsBytes = initialsPngBytes,
+                wizardStep = SignWizardStep.STEP_3_CONFIRM
+            )
+        }
+    }
+
+    fun onRedoFromConfirm() {
+        if (_uiState.value.isSubmittingSignature) return
+        _uiState.update {
+            it.copy(wizardStep = SignWizardStep.STEP_2_CAPTURE_SIGNATURE)
+        }
+    }
+
+    /**
+     * Etapa 3 (Confirmar -> Assinar Salvando -> Assinar Concluída / Assinar Falha):
+     */
+    fun onConfirmAndSaveSignature() {
+        val state = _uiState.value
+        val sigBytes = state.capturedSignatureBytes ?: return
+        onConfirmDrawnSignature(sigBytes, state.capturedInitialsBytes)
+    }
+
+    fun onConfirmDrawnSignature(
+        signaturePngBytes: ByteArray,
+        initialsPngBytes: ByteArray? = _uiState.value.capturedInitialsBytes
+    ) {
         val state = _uiState.value
         val doc = state.document ?: return
         if (state.isSubmittingSignature) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSubmittingSignature = true) }
+            val nowMillis = System.currentTimeMillis()
+            _uiState.update {
+                it.copy(
+                    isSubmittingSignature = true,
+                    signedTimestampMillis = nowMillis,
+                    errorMessage = null
+                )
+            }
+
+            if (savingDelayMillis > 0L) {
+                delay(savingDelayMillis)
+            }
 
             when (
                 val res = signDocumentUseCase(
                     documentId = doc.id,
                     signerId = state.signerId,
-                    signaturePngBytes = signaturePngBytes
+                    signaturePngBytes = signaturePngBytes,
+                    initialsPngBytes = initialsPngBytes,
+                    signedAtMillis = nowMillis
                 )
             ) {
                 is AppResult.Success -> {
-                    // Re-renderiza a página atual para já mostrar o PDF com a assinatura gravada pelo PDFBox
                     state.pdfFile?.let { renderPageInternal(it, state.currentPageIndex) }
                     _uiState.update {
                         it.copy(
                             isSubmittingSignature = false,
-                            isDrawingModalOpen = false,
+                            wizardStep = SignWizardStep.COMPLETED,
                             mySignatureStatus = SignatureStatus.SIGNED,
                             snackbarMessage = "Documento assinado com sucesso!",
                             isErrorSnackbar = false,
@@ -198,12 +365,28 @@ class SignerDocumentSignViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isSubmittingSignature = false,
+                            wizardStep = SignWizardStep.FAILURE,
+                            errorMessage = res.message,
                             snackbarMessage = res.message,
                             isErrorSnackbar = true
                         )
                     }
                 }
             }
+        }
+    }
+
+    fun onRetrySaveAfterFailure() {
+        _uiState.update { it.copy(wizardStep = SignWizardStep.STEP_3_CONFIRM) }
+        onConfirmAndSaveSignature()
+    }
+
+    fun onReturnToDocumentFromFailure() {
+        _uiState.update {
+            it.copy(
+                wizardStep = SignWizardStep.STEP_1_READ_DOCUMENT,
+                errorMessage = null
+            )
         }
     }
 

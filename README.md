@@ -1,14 +1,14 @@
 # LetsSign — Plataforma Mobile de Assinatura Eletrônica e Gestão de Documentos
 
 > **FIAP Challenge — 2º Ano de Análise e Desenvolvimento de Sistemas (Sprint 1)**  
-> Aplicativo Android nativo desenvolvido em **Kotlin** com **Jetpack Compose** para preparação de documentos PDF, posicionamento responsivo de campos de assinatura, envio de solicitações, coleta de assinatura manuscrita em Canvas e gravação definitiva no PDF físico com validade jurídica (registro de timestamp UTC e endereço IP).
+> Aplicativo Android nativo desenvolvido em **Kotlin** com **Jetpack Compose** para preparação de documentos PDF, detecção assistida por IA, posicionamento responsivo de campos de assinatura e rubrica, envio de solicitações, coleta de assinatura manuscrita (Canvas) ou digitada (fontes cursivas) e gravação definitiva no PDF físico com validade jurídica (timestamp UTC e endereço IP).
 
 ---
 
 ## Sumário
 
 1. [Visão Geral da Solução](#1-visão-geral-da-solução)
-2. [Credenciais de Teste (Seed Automático)](#2-credenciais-de-teste-seed-automático)
+2. [Credenciais de Teste (Login por Código de 6 Dígitos)](#2-credenciais-de-teste-login-por-código-de-6-dígitos)
 3. [Como Executar o Projeto](#3-como-executar-o-projeto)
 4. [Roteiro Passo a Passo para Testar o App (Fim a Fim)](#4-roteiro-passo-a-passo-para-testar-o-app-fim-a-fim)
 5. [Arquitetura e Preparação para a Sprint 2 (API REST)](#5-arquitetura-e-preparação-para-a-sprint-2-api-rest)
@@ -19,152 +19,110 @@
 
 ## 1. Visão Geral da Solução
 
-O aplicativo **LetsSign** resolve o desafio de transformar a preparação, o envio e a coleta de assinaturas eletrônicas em documentos PDF em uma experiência móvel simples, segura e intuitiva, operando em dois perfis distintos:
+O aplicativo **LetsSign** implementa integralmente as **10 linhas de fluxo (74 telas/estados)** da Biblioteca LetsSign no Figma, divididas entre o perfil **Administrador (`ADMIN`)** e o perfil **Signatário (`SIGNER`)**:
 
-### Perfil Administrador (`ADMIN`)
-* **Dashboard de Acompanhamento:** Visualização organizada em abas (**Enviados** — incluindo seção *Em preparação* para rascunhos —, **Parcialmente Assinados** e **Concluídos**), com barra de progresso e contagem de assinaturas.
-* **Gestão de Signatários:** Cadastro, edição, exclusão e busca por nome ou e-mail de signatários (*nome completo*, *e-mail*, *telefone* e *senha de autenticação*), com validação de formato e bloqueio de e-mail duplicado.
-* **Wizard de Criação e Envio de Documento (5 etapas):**
-  1. **Título e Arquivo PDF:** Importação de PDF do dispositivo (`ACTION_OPEN_DOCUMENT`), validação real de integridade via `PdfRenderer` (exibindo alerta visual para arquivos inválidos ou corrompidos) e cópia para o armazenamento interno seguro (`context.filesDir`).
-  2. **Seleção e Classificação de Signatários:** Seleção múltipla de signatários e classificação individual como **Contratante**, **Contratado** ou **Testemunha** (permitindo remover ou substituir signatários antes do envio).
-  3. **Posicionamento Visual de Assinaturas (Drag & Drop):** Visualização de todas as páginas do PDF e posicionamento livre de múltiplos campos de assinatura por signatário (uma cor por participante). Salva coordenadas relativas (`0.0` a `1.0`) para preservar a posição exata em qualquer tamanho de tela e bloqueia o *drop* fora dos limites da página.
-  4. **Revisão e Disparo:** Conferência do documento final, lista de signatários, páginas/campos atribuídos e **mensagem personalizada que acompanhará o convite** antes de disparar o envio.
-* **Detalhes e Trilha de Auditoria:** Consulta da situação geral do documento, status individual de cada signatário, linha do tempo cronológica (*Criação*, *Envio com mensagem do convite*, *Assinaturas individuais com IP e horário*, *Conclusão*) e visualização do **Documento Final Assinado (PDF)**.
+### Fluxo 1 — Login Geral por Código de 6 Dígitos (5 telas)
+* **Login Unificado (`Login Geral`):** Qualquer usuário (Admin ou Signatário) informa seu e-mail e recebe um código de acesso de 6 dígitos (`Login Carregando` -> `Login Código` com contagem regressiva `00:42`), além dos estados `Login Erro` (validação de formato de e-mail) e `Login Código inválido` (botão *Reenviar código*). Após confirmar o código, o app redireciona automaticamente para a Home Admin ou Home Signatário conforme o perfil cadastrado.
 
-### Perfil Signatário (`SIGNER`)
-* **Dashboard do Signatário:** Abas **Pendentes** e **Assinados**, exibindo exclusivamente os documentos enviados nos quais o usuário logado foi incluído.
-* **Foco Automático e Assinatura em Canvas:** Ao abrir um documento pendente, o app navega até a página correta e rola automaticamente até a posição da caixa atribuída ao signatário. Ao tocar para assinar, abre um **Canvas de desenho manuscrito**, grava a assinatura diretamente dentro do PDF real usando **PDFBox** (`PDPageContentStream`), registra data/hora e IP local e atualiza automaticamente o documento para **Concluído** assim que todos os participantes obrigatórios assinam.
+### Fluxos 2 e 4 — Home Admin (10 telas) e Contatos (9 telas)
+* **Menu `Documentos`:** Abas **Enviados** e **Concluídos**, busca por título ou nome do signatário, contagem de resultados, estados *Vazio*, *Carregando* (skeletons), *Erro* (com retry e snackbar) e botão flutuante **+ Novo documento**.
+* **Menu `Minhas Assinaturas`:** Abas **Pendentes** (com chip *Aguardando você* e prazo `05/11/2026`, abrindo direto o fluxo de assinatura) e **Assinados**.
+* **Menu `Aguardando Terceiros`:** Lista dedicada aos documentos **Parcialmente assinados** com busca e barra de progresso.
+* **Menu `Contatos`:** Listagem dos contatos cadastrados (**6 contatos iniciais** pré-carregados), busca por nome, e-mail ou CPF/CNPJ (com destaque em roxo do termo buscado), e formulário simplificado para **Pessoa Física** (*CPF\**, *Nome\**, *E-mail\**, *Data de nascimento\**) e **Pessoa Jurídica** (*CNPJ\**, *Razão social\**, *E-mail\**), com resumo de erros no topo (*"Corrija N campos para salvar o contato."*) e exclusão.
+
+### Fluxos 5, 6, 7 e 8 — Novo Documento em 6 Etapas + IA Assistiva (29 telas)
+1. **Etapa 1 (Título e arquivo):** Importação de PDF via `ACTION_OPEN_DOCUMENT` (`InputStream` -> `context.filesDir`), validação real com `PdfRenderer`, estado `Processando páginas · 66%`, card de arquivo válido (`6 páginas · 1,8 MB`) e tratamento de arquivo corrompido/inválido.
+2. **Etapa 2 (Quem vai assinar?):** Seleção manual com busca por **grupo, nome ou e-mail** (ex.: digitar `"Jurídico"` permite marcar o grupo inteiro de 2 signatários de uma só vez), detecção assistida **✨ Sugerir com IA** (*Procurando signatários* -> *Encontramos 3 possíveis signatários*), classificação individual (*Contratante*, *Contratado*, *Testemunha*), substituição (`⇄`) e remoção em cascata.
+3. **Etapa 3 (Envio e autenticação):** Configuração em acordeão por signatário com bottom sheets para *Enviar link de assinatura por* (*E-mail*, *SMS*, *WhatsApp*, *Não enviar*), *Método de autenticação* (*E-mail*, *SMS*, *WhatsApp*, *Certificado Digital*, *Sem Autenticação*), *Autenticações adicionais* (*Selfie*, *Documento com foto*, *Biometria facial*, *Prova de vida*) e *Idioma*.
+4. **Etapa 4 (Campos de assinatura + IA nos campos):** Visualização das páginas do PDF via `PdfRenderer`, botão **+ Campo** (sheet para escolher quem assina naquela página), pílulas por signatário com cores distintas (`#6d3bf5`, `#17123a`, `#0a7886`), *Drag & Drop* com barra flutuante de seleção, conversão para coordenadas relativas (`0.0..1.0`), bloqueio de limites da página (*"O campo precisa ficar dentro da página."*) e botão **✨ Sugerir posições com IA** (sugere campos de *Assinatura* e *Rubrica*, permitindo revisar cada campo individualmente ou aceitar todos).
+5. **Etapa 5 (Revisar e enviar):** Conferência do documento, lista de signatários/campos/páginas, alerta de pendência caso falte campo para algum participante (*"Beatriz Nogueira ainda não tem campo de assinatura"*) e personalização da **Mensagem do convite**.
+6. **Etapa 6 (Documento enviado!):** Confirmação de envio com atalho direto para **Acompanhar documento** ou **Voltar ao início**.
+
+### Fluxos 3, 9 e 10 — Home Signatário (5 telas), Assinar Documento em 3 Etapas (10 telas) e Detalhe do Documento (6 telas)
+* **Home Signatário:** Saudação personalizada, abas **Pendentes** (`Aguardando você` + prazo) e **Assinados**.
+* **Assinar Documento (3 etapas):**
+  * **Etapa 1 (Leia o documento):** Foco automático na página e nos campos atribuídos ao signatário (`Assine aqui` e `Rubrica`).
+  * **Etapa 2 (Sua assinatura e Sua rubrica):** Captura via **Desenhar** (Canvas manuscrito) ou **Digitar** (renderizando o nome e as iniciais nas 3 fontes cursivas oficiais: *Dancing Script*, *Caveat* e *Homemade Apple*).
+  * **Etapa 3 (Confirmar):** Preview lado a lado da Assinatura e da Rubrica -> gravação definitiva dos Bitmaps nas coordenadas exatas do PDF via **PDFBox** (`PDPageContentStream`), registro de data/hora e IP local, conclusão automática do documento quando todos assinam e tela **Documento assinado!**.
+* **Detalhe do Documento:** Status de cada signatário, linha do tempo **Acompanhamento**, botão **Reenviar lembrete** (para pendentes/parciais) e botão **Baixar documento assinado** (para concluídos, exibindo aviso de salvamento em Downloads e ação **Abrir**).
 
 ---
 
-## 2. Credenciais de Teste (Seed Automático)
+## 2. Credenciais de Teste (Login por Código de 6 Dígitos)
 
-Ao abrir o aplicativo pela primeira vez, o banco de dados local (**Room**) é populado automaticamente (`DatabaseSeeder`) com **1 Administrador** e **2 Signatários** prontos para uso:
+Ao abrir o aplicativo pela primeira vez, o banco de dados local (**Room**) é populado automaticamente (`DatabaseSeeder`) com **1 Administrador**, **6 Contatos Signatários** e **5 Documentos de Exemplo** (com PDF válido de 6 páginas gerado via PDFBox):
 
-| Perfil | Nome | E-mail (Login) | Senha | Papel no Sistema |
+| Perfil | Nome | E-mail para Login | Código de 6 Dígitos (OTP) | Observação |
 | :--- | :--- | :--- | :--- | :--- |
-| **Administrador** | Administrador LetsSign | `admin@letssign.com` | `123456` | `ADMIN` |
-| **Signatário 1** | Carlos Silva | `carlos@letssign.com` | `123456` | `SIGNER` |
-| **Signatário 2** | Mariana Souza | `mariana@letssign.com` | `123456` | `SIGNER` |
-
-> **Nota:** Qualquer novo signatário cadastrado pelo Admin na aba *Assinaturas* também pode fazer login imediatamente no app utilizando o e-mail e a senha definidos no momento do cadastro!
+| **Administrador** | Administrador LetsSign | `admin@exemplo.com.br` *(ou `admin@letssign.com`)* | Qualquer código de 6 dígitos (ex: **`482910`** ou **`123456`**) | Use `482915` ou `000000` para testar a tela *Código inválido* |
+| **Signatário 1** | Rafael Tavares | `rafael.tavares@exemplo.com.br` *(ou `carlos@letssign.com`)* | Qualquer código de 6 dígitos (ex: **`482910`** ou **`123456`**) | Grupo: *Comercial* (possui assinatura + rubrica pendentes) |
+| **Signatária 2** | Marina Albuquerque | `marina.albuquerque@exemplo.com.br` *(ou `mariana@letssign.com`)* | Qualquer código de 6 dígitos (ex: **`482910`** ou **`123456`**) | Grupo: *Jurídico* |
+| **Signatária 3** | Beatriz Nogueira | `beatriz.nogueira@exemplo.com.br` | Qualquer código de 6 dígitos (ex: **`482910`** ou **`123456`**) | Grupo: *Jurídico* (falta apenas ela no *Aditivo contratual* 2/3) |
 
 ---
 
 ## 3. Como Executar o Projeto
 
-### Pré-requisitos
-* **Android Studio** (compatível com Android Gradle Plugin `9.4.1`)
-* **JDK 17+** (ou o JBR embutido no próprio Android Studio)
-* **Dispositivo ou Emulador Android:** `minSdk 24` (Android 7.0+) / `compileSdk 37`
-
 ### Opção A: Executando pelo Android Studio (Recomendado)
-1. Descompacte o projeto (ou clone o repositório) e abra a pasta raiz `challenge_letsSign` no **Android Studio**.
+1. Abra a pasta raiz `challenge_letsSign` no **Android Studio**.
 2. Aguarde a finalização do *Gradle Sync*.
-3. Inicie um Emulador Android (API 24+) e clique no botão **Run ('app')** (`Shift + F10` no Windows/Linux ou `Ctrl + R` no macOS).
+3. Inicie um Emulador Android (API 24+) e clique em **Run ('app')**.
 
-### Opção B: Compilando e Testando via Terminal
-Para gerar o APK de Debug (`app/build/outputs/apk/debug/app-debug.apk`) e rodar os **37 testes unitários automatizados**:
-
+### Opção B: Compilando e Rodando os Testes Unitários via Terminal
 ```bash
-./gradlew assembleDebug testDebugUnitTest
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug testDebugUnitTest
 ```
-
-> **Dica para macOS:** Caso seu terminal não tenha a variável `JAVA_HOME` configurada globalmente, utilize o JDK embutido no Android Studio:
-> ```bash
-> JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug testDebugUnitTest
-> ```
 
 ---
 
 ## 4. Roteiro Passo a Passo para Testar o App (Fim a Fim)
 
-Siga este roteiro rápido de 3 minutos para validar todos os requisitos obrigatórios da Sprint 1:
+### Passo 1 — Login Geral por Código de 6 Dígitos (Admin)
+1. Na tela de Login, digite **`admin@exemplo.com.br`** e toque em **Enviar código**.
+2. *(Opcional)* Digite `482915` e toque em **Entrar** para visualizar o estado **Código inválido**; depois toque em **Reenviar código**, digite **`482910`** (ou `123456`) e toque em **Entrar**.
+3. Explore a Home Admin pelos 4 itens do menu inferior: **Documentos** (abas *Enviados* e *Concluídos* + busca), **Minhas Assinaturas**, **Aguardando Terceiros** e **Contatos**.
 
-### Passo 0 — Colocando um arquivo PDF no Emulador
-* Antes de iniciar o teste, arraste e solte qualquer arquivo `.pdf` do seu computador para cima da janela do **Emulador Android** (ele será salvo automaticamente na pasta **Downloads** do emulador).
+### Passo 2 — Contatos (Pessoa Física e Jurídica)
+1. Na aba **Contatos**, veja os 6 contatos cadastrados (*Beatriz*, *Camila*, *Lucas*, *Marina*, *Nova Soluções Ltda.* e *Rafael*).
+2. Teste buscar por `"mar"` ou `"carlos"` (para ver o estado sem resultados e o botão *Limpar busca*).
+3. Toque em **+ Novo contato**, alterne o seletor **Tipo** entre **Física** e **Jurídica**, teste clicar em **Salvar** com campos vazios para ver o banner *"Corrija N campos para salvar o contato."* e salve um novo contato.
 
-### Passo 1 — Login como Admin e Gestão de Signatários
-1. Na tela de Login, entre com **`admin@letssign.com`** e senha **`123456`**.
-2. Na barra inferior, toque na aba **Assinaturas** para ver os signatários já cadastrados (*Carlos Silva* e *Mariana Souza*).
-3. *(Opcional)* Toque em **+ Novo signatário**, cadastre um novo participante (teste colocar um e-mail inválido ou repetido para ver as validações visuais) e salve.
+### Passo 3 — Novo Documento em 6 Etapas com IA
+1. Na aba **Documentos**, toque em **+ Novo documento** (ou arraste um `.pdf` para o emulador antes).
+2. **Etapa 1 (Título e arquivo):** Digite um título, escolha um arquivo PDF e veja o processamento e o card verde *"Arquivo válido e pronto para uso."*. Toque em **Continuar**.
+3. **Etapa 2 (Quem vai assinar?):** Toque em **✨ Sugerir com IA** (ou em **+ Adicionar signatários** e busque por `"Jurídico"` para selecionar o grupo inteiro). Confira a classificação (*Contratante*, *Contratado*, *Testemunha*) e toque em **Continuar**.
+4. **Etapa 3 (Envio e autenticação):** Toque nos seletores do card para abrir os sheets de *Enviar link por*, *Método de autenticação* e *Autenticações adicionais*. Toque em **Continuar**.
+5. **Etapa 4 (Campos de assinatura):**
+   * Toque em **✨ Sugerir posições com IA**, revise um campo sugerido (alternando entre *Assinatura* e *Rubrica*) e toque em **Aceitar campos** (ou use o botão **+ Campo**).
+   * Arraste qualquer campo na página (tente arrastá-lo para fora da folha para ver o bloqueio *"O campo precisa ficar dentro da página."*). Toque em **Continuar**.
+6. **Etapa 5 e 6 (Revisar e enviar):** Confira o resumo, edite a **Mensagem do convite** e toque em **Confirmar envio** -> na tela **Documento enviado!**, toque em **Acompanhar documento**.
 
-### Passo 2 — Criando e Configurando um Novo Documento PDF
-1. Volte para a aba **Documentos** e toque em **+ Novo documento**.
-2. **Etapa 1 (Título e Arquivo):** Digite um título (ex: *Contrato de Prestação de Serviços*), toque em **Escolher arquivo** e selecione o PDF da pasta *Downloads* do emulador. Clique em **Continuar**.
-3. **Etapa 2 (Quem vai assinar?):** Toque em **+ Adicionar signatários**, marque **Carlos Silva** e **Mariana Souza** e confirme. Defina o papel de Carlos como **Contratante** e de Mariana como **Contratado** (ou **Testemunha**). Clique em **Continuar**.
-4. **Etapa 3 (Posicionamento das Assinaturas no PDF):**
-   * Com **Carlos** selecionado na barra superior, toque em **Inserir assinatura nesta página** e arraste a caixa roxa até a posição desejada no PDF.
-   * *(Teste de Regra de Negócio)* Tente arrastar a caixa para fora da folha do PDF: observe que ela fica vermelha (*"Fora do limite"*), exibe o alerta *"Campo fora dos limites da página"* e retorna automaticamente para dentro da página.
-   * Selecione **Mariana** na barra superior, toque em **Inserir assinatura nesta página** e posicione a caixa dela. Clique em **Continuar**.
-5. **Etapa 4 (Revisão e Disparo):**
-   * Confira o resumo do documento, os signatários, as páginas onde assinarão e personalize a **Mensagem que acompanhará o convite**.
-   * Toque em **Confirmar envio**. O documento aparecerá na aba **Enviados** (`0/2 assinaturas`).
-
-### Passo 3 — Assinando como Signatário 1 (Carlos)
-1. No Admin, vá na aba **Perfil** (canto inferior direito) e toque em **Sair da conta**.
-2. Faça login como Signatário 1: **`carlos@letssign.com`** / senha **`123456`**.
-3. Na aba **Pendentes**, toque no documento *Contrato de Prestação de Serviços*.
-4. O aplicativo abrirá o PDF já focado na página e na posição da caixa de Carlos. Toque na caixa **"Toque para assinar aqui"** (ou no botão **Assinar documento**).
-5. Desenhe a assinatura com o mouse/dedo no quadro do Canvas e toque em **Confirmar assinatura**.
-6. Veja que a assinatura desenhada agora faz parte do próprio PDF!
-
-### Passo 4 — Verificando o Status "Parcialmente Assinado" no Admin
-1. Saia da conta de Carlos (aba **Perfil** -> **Sair da conta**) e entre novamente como Admin (**`admin@letssign.com`** / **`123456`**).
-2. No Dashboard, toque na aba **Parcialmente Assinados**: o documento estará lá com barra em **50% (`1/2 assinaturas`)**.
-3. Toque no card do documento para abrir a tela de **Detalhes do Documento** e veja que Carlos consta como **Assinado** (com data, hora e IP registrado) e Mariana consta como **Pendente**, além do **Histórico de eventos** completo.
-
-### Passo 5 — Assinando como Signatário 2 (Mariana) e Conclusão Automática
-1. Saia da conta do Admin e entre como Signatária 2: **`mariana@letssign.com`** / senha **`123456`**.
-2. Abra o documento pendente, desenhe a assinatura de Mariana e confirme.
-3. Volte para a conta do Admin (**`admin@letssign.com`**): o documento terá migrado automaticamente para a aba **Concluídos** (`2/2 assinaturas` em verde).
-4. Abra os detalhes do documento e clique em **Ver documento final (PDF)** para visualizar o PDF com ambas as assinaturas gravadas definitivamente!
+### Passo 4 — Fluxo do Signatário (Desenhar, Digitar e Rubrica + Conclusão Automática)
+1. Volte ao início, toque em **Sair** (canto superior direito do cabeçalho) e entre com **`beatriz.nogueira@exemplo.com.br`** (código **`123456`**).
+2. Na aba **Pendentes**, toque em **Aditivo contratual** (que já possui 2/3 assinaturas coletadas).
+3. **Etapa 1 (Leia o documento):** Veja os campos destacados na página e toque em **Assinar**.
+4. **Etapa 2 (Sua assinatura e Sua rubrica):** Desenhe sua assinatura no Canvas (ou alterne para a aba **Digitar** e escolha uma das 3 fontes cursivas) e toque em **Usar assinatura**. Em seguida, desenhe ou digite sua **Rubrica** e toque em **Usar rubrica**.
+5. **Etapa 3 (Confirmar):** Confira o preview lado a lado da Assinatura e da Rubrica e toque em **Confirmar**.
+6. Na tela **Documento assinado!**, toque em **Ver documentos assinados** e abra o **Aditivo contratual**: ele agora está **Concluído (3 de 3 assinaturas)**, permitindo clicar em **Baixar documento assinado** e **Abrir** o PDF final gravado via PDFBox!
 
 ---
 
 ## 5. Arquitetura e Preparação para a Sprint 2 (API REST)
 
-O projeto foi construído seguindo **Clean Architecture + MVVM**, com separação estrita entre `ui`, `domain` e `data`.
-
-Para garantir que na **Sprint 2** a persistência local seja substituída por chamadas de API REST (Spring Boot / .NET + MongoDB) sem alterar uma única linha das telas (`ui`) ou das regras de negócio (`domain/usecase`):
-* A camada `domain/repository` define contratos puros (`UserRepository`, `DocumentRepository`, `PdfStorageRepository`) trabalhando apenas com modelos de domínio puros.
-* A camada `data/repository/local` contém as implementações atuais baseadas em **Room** e **File System** (`LocalUserRepository`, `LocalDocumentRepository`, `LocalPdfStorageRepository`), injetadas via **Dagger Hilt** (`RepositoryModule.kt`).
-
-```text
-com.example.challenge_letssign
-├── data/
-│   ├── di/                # Módulos Hilt (DatabaseModule, RepositoryModule, DispatcherModule)
-│   ├── local/             # Room Database, Entities, DAOs, TypeConverters e DatabaseSeeder
-│   └── repository/
-│       └── local/         # Implementações locais (Room + Internal File Storage + PDFBox)
-├── domain/
-│   ├── model/             # Modelos puros (User, Document, DocumentSigner, SignatureField, ImportedPdfFile)
-│   ├── repository/        # Interfaces puras desacopladas (prontas para RemoteRepository na Sprint 2)
-│   └── usecase/           # Casos de uso e validações de negócio
-├── ui/
-│   ├── auth/              # Tela e ViewModel de Login
-│   ├── admin/             # Dashboard, Signatários, Wizard PDF, Drag & Drop, Review e Detalhes
-│   ├── signer/            # Dashboard do Signatário, Visualizador Focado e Modal Canvas de Assinatura
-│   ├── components/        # Componentes base do Design System (Botões, Inputs, Stepper, Chips, Avatares)
-│   ├── navigation/        # Grafo de navegação (LetsSignNavHost)
-│   └── theme/             # Tokens de Cores, Gradientes e Tipografia (Plus Jakarta Sans & Manrope)
-└── utils/                 # AppResult, PdfCoordinateConverter, PdfPageRenderer, DateTimeFormatters, IpAddressResolver
-```
+O projeto segue **Clean Architecture + MVVM**, mantendo `ui` e `domain` 100% desacoplados de Room e File System por meio das interfaces puras em `domain/repository` (`UserRepository`, `DocumentRepository`, `PdfStorageRepository`), prontas para receber a implementação remota (`data/repository/remote`) na Sprint 2.
 
 ---
 
 ## 6. Regras de Negócio e Requisitos Técnicos Atendidos
 
-| Regra / Requisito do Edital | Como e Onde foi Implementado |
+| Regra / Requisito | Onde foi Implementado |
 | :--- | :--- |
-| **Mínimo de 1 signatário e todos com campo posicionado antes do envio** | Validado em `ValidateDocumentPositioningUseCase.kt` e `SendDocumentForSignatureUseCase.kt`. |
-| **Coordenadas relativas (`0.0` a `1.0`) preservando posição entre dispositivos** | Calculado em `PdfCoordinateConverter.kt` (`relativeX = dropX / viewWidth`) e persistido em `SignatureFieldEntity.kt`. |
-| **Campos devem permanecer dentro dos limites da página** | Validado em tempo real no arraste (`PdfPositioningScreen.kt`) e no domínio (`SaveSignatureFieldUseCase.kt`). |
-| **Exclusão em cascata ao remover/substituir signatário em rascunho** | Transação atômica em `DocumentDao.removeSignerWithCascadeFields` excluindo os `SignatureFieldEntity` do signatário removido. |
-| **Preservação e imutabilidade do documento enviado** | Documentos `PENDING` ou `COMPLETED` bloqueiam edição/exclusão na UI e nos UseCases (`SaveSignatureFieldUseCase`, `DeleteSignatureFieldUseCase`, `DocumentDetailsViewModel`). |
-| **Conclusão automática quando todos os obrigatórios assinam** | Transação em `DocumentDao.signAndAutoCompleteIfAllSigned`: verifica se `countPendingSignersForDocument == 0` e atualiza o documento para `COMPLETED`. |
-| **Isolamento de acesso aos documentos por usuário** | Admin consulta apenas `observeDocumentsByAdmin(adminId)`; Signatário consulta apenas documentos enviados (`status != 'DRAFT'`) onde foi vinculado (`observeDocumentsBySigner(signerId)`). |
-| **Gravação real da assinatura no PDF com PDFBox** | Implementado em `LocalPdfStorageRepository.embedSignaturesIntoPdf` convertendo coordenadas relativas para o `cropBox` da `PDPage` e desenhando via `PDPageContentStream`. |
+| **Regra 1 (Validação de Envio — mínimo 1 signatário e todos com campo)** | `ValidateDocumentPositioningUseCase.kt`, `SendDocumentForSignatureUseCase.kt` e `DocumentReviewScreen.kt` (*Revisão com Pendência*). |
+| **Regra 2 (Limites do PDF `0.0..1.0`)** | `PdfCoordinateConverter.kt`, `SaveSignatureFieldUseCase.kt` e `PdfPositioningScreen.kt` (*Campo Fora dos Limites*). |
+| **Regra 3 (Exclusão em cascata de campos ao remover/substituir signatário)** | `DocumentDao.removeSignerWithCascadeFields` e `PrepareDraftDocumentUseCase.kt`. |
+| **Regra 4 (Imutabilidade pós-envio e isolamento por usuário)** | `SaveSignatureFieldUseCase.kt`, `DeleteSignatureFieldUseCase.kt`, `DocumentDetailsViewModel.kt` e `DocumentDao.kt`. |
+| **Regra 5 (Conclusão automática ao coletar todas as assinaturas)** | Transação `DocumentDao.signAndAutoCompleteIfAllSigned` acionada após `SignDocumentUseCase.kt`. |
+| **Gravação real de Assinatura e Rubrica no PDF via PDFBox** | `LocalPdfStorageRepository.embedSignaturesIntoPdf` convertendo coordenadas relativas para o `cropBox` da `PDPage`. |
 
 ---
 
@@ -172,11 +130,8 @@ com.example.challenge_letssign
 
 * **Linguagem:** Kotlin `2.2.10`
 * **UI Toolkit:** Jetpack Compose (Material 3) + Navigation Compose
-* **Tipografia Oficial:** *Plus Jakarta Sans* & *Manrope* (`res/font/`)
-* **Arquitetura & Estado:** Clean Architecture + MVVM (`ViewModel` + `StateFlow`)
-* **Injeção de Dependência:** Dagger Hilt `2.59.2` + KSP
-* **Banco de Dados Local:** Room Database `2.8.4` (`users`, `documents`, `document_signer_cross_ref`, `signature_fields`)
-* **Visualização e Manipulação de PDF:**
-  * `android.graphics.pdf.PdfRenderer` (renderização nativa de páginas em `Bitmap`)
-  * `com.tom-roush:pdfbox-android:2.0.27.0` (inserção definitiva do `Bitmap` da assinatura no PDF)
-* **Testes Automatizados:** JUnit 4 + Kotlinx Coroutines Test (**37 testes unitários** cobrindo repositórios, conversores, matemática de coordenadas e todas as regras de negócio)
+* **Tipografia Oficial:** *Plus Jakarta Sans*, *Manrope*, *Dancing Script*, *Caveat* & *Homemade Apple* (`res/font/`)
+* **Arquitetura & DI:** Clean Architecture + MVVM (`ViewModel` + `StateFlow`) + Dagger Hilt `2.59.2` (KSP)
+* **Persistência Local:** Room Database `2.8.4` + Internal File Storage (`context.filesDir`)
+* **Motor PDF:** `android.graphics.pdf.PdfRenderer` (visualização) + `com.tom-roush:pdfbox-android:2.0.27.0` (gravação de assinaturas e rubricas)
+* **Testes Automatizados:** JUnit 4 + Kotlinx Coroutines Test (**42 testes unitários** passando)

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignerDocumentsUseCase
 import com.example.challenge_letssign.domain.usecase.signer.SignerAssignedDocument
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +20,9 @@ enum class SignerDocumentTab(val title: String) {
 
 data class SignerDashboardUiState(
     val selectedTab: SignerDocumentTab = SignerDocumentTab.PENDING,
-    val allAssignedDocuments: List<SignerAssignedDocument> = emptyList()
+    val allAssignedDocuments: List<SignerAssignedDocument> = emptyList(),
+    val isLoading: Boolean = false,
+    val hasError: Boolean = false
 ) {
     val pendingDocuments: List<SignerAssignedDocument>
         get() = allAssignedDocuments.filter { it.isPendingForMe }
@@ -42,6 +45,8 @@ class SignerDashboardViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SignerDashboardUiState())
     val uiState: StateFlow<SignerDashboardUiState> = _uiState.asStateFlow()
 
+    var reloadDelayMillis: Long = 1500L
+
     private var loadedSignerId: String? = null
 
     fun observeDocuments(signerId: String) {
@@ -50,12 +55,38 @@ class SignerDashboardViewModel @Inject constructor(
 
         viewModelScope.launch {
             observeSignerDocumentsUseCase(signerId).collect { docs ->
-                _uiState.update { it.copy(allAssignedDocuments = docs) }
+                _uiState.update {
+                    it.copy(
+                        allAssignedDocuments = docs,
+                        isLoading = false,
+                        hasError = false
+                    )
+                }
             }
         }
     }
 
     fun onSelectTab(tab: SignerDocumentTab) {
         _uiState.update { it.copy(selectedTab = tab) }
+    }
+
+    fun onRetryLoad() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    hasError = false
+                )
+            }
+            if (reloadDelayMillis > 0L) {
+                delay(reloadDelayMillis)
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    hasError = false
+                )
+            }
+        }
     }
 }

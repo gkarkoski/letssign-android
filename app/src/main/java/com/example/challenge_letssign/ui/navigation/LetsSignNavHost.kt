@@ -273,6 +273,9 @@ fun LetsSignNavHost(
                 },
                 onOpenDocumentForSigning = { docId ->
                     navController.navigate(LetsSignRoutes.signerDocumentSign(docId, userId))
+                },
+                onOpenSignedDocumentDetails = { docId ->
+                    navController.navigate(LetsSignRoutes.documentDetails(docId))
                 }
             )
         }
@@ -291,6 +294,9 @@ fun LetsSignNavHost(
                 documentId = documentId,
                 signerId = signerId,
                 onBack = {
+                    navController.popBackStack()
+                },
+                onViewSignedDocuments = {
                     navController.popBackStack()
                 }
             )

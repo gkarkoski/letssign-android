@@ -128,6 +128,61 @@ class SignerWorkflowAndPdfBoxTest {
         assertEquals("Desenhe sua assinatura antes de confirmar.", (result as AppResult.Error).message)
     }
 
+    @Test
+    fun `SignDocumentUseCase embeds separate Signature and Initials (Rubrica) bitmaps when signer has both field types`() = runTest(testDispatcher) {
+        val docId = "doc-rubrica"
+        val signerId = "s-rafael"
+
+        fakeDocRepo.createDocument(
+            Document(docId, "Contrato de serviços", "contrato.pdf", DocumentStatus.PENDING, 1000L, "admin-1")
+        )
+        fakeDocRepo.assignSignerToDocument(
+            DocumentSigner(docId, signerId, SignerRoleClass.CONTRATADO, SignatureStatus.PENDING)
+        )
+        fakeDocRepo.saveSignatureField(
+            SignatureField(
+                id = "f-sig",
+                documentId = docId,
+                signerId = signerId,
+                pageNumber = 1,
+                relativeX = 0.54f,
+                relativeY = 0.68f,
+                relativeWidth = 0.36f,
+                relativeHeight = 0.08f,
+                fieldType = com.example.challenge_letssign.domain.model.SignatureFieldType.SIGNATURE
+            )
+        )
+        fakeDocRepo.saveSignatureField(
+            SignatureField(
+                id = "f-init",
+                documentId = docId,
+                signerId = signerId,
+                pageNumber = 1,
+                relativeX = 0.08f,
+                relativeY = 0.56f,
+                relativeWidth = 0.22f,
+                relativeHeight = 0.07f,
+                fieldType = com.example.challenge_letssign.domain.model.SignatureFieldType.INITIALS
+            )
+        )
+
+        val sigPng = byteArrayOf(10, 20, 30)
+        val initPng = byteArrayOf(40, 50, 60)
+
+        val res = signDocumentUseCase(
+            documentId = docId,
+            signerId = signerId,
+            signaturePngBytes = sigPng,
+            initialsPngBytes = initPng,
+            signedAtMillis = 9000L,
+            signatureIp = "192.168.1.99"
+        )
+        assertTrue(res.isSuccess)
+        // Called once for signatureOnlyFields and once for initialsOnlyFields
+        assertEquals(2, fakePdfRepo.embedCallCount)
+        assertEquals(DocumentStatus.COMPLETED, fakeDocRepo.getDocumentById(docId).getOrNull()?.status)
+    }
+
     private class FakeSignerPdfStorageRepository : PdfStorageRepository {
         var embedCallCount = 0
 

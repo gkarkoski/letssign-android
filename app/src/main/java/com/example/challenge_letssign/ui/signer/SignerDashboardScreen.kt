@@ -12,23 +12,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,14 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.usecase.signer.SignerAssignedDocument
 import com.example.challenge_letssign.ui.components.ChevronRightIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
-import com.example.challenge_letssign.ui.components.LetsSignBottomNavTab
-import com.example.challenge_letssign.ui.components.LetsSignBottomNavigationBar
-import com.example.challenge_letssign.ui.components.LetsSignGradientHeader
-import com.example.challenge_letssign.ui.components.LetsSignSecondaryButton
+import com.example.challenge_letssign.ui.components.ErrorCircleIcon
+import com.example.challenge_letssign.ui.components.LetsSignBrandLogo
+import com.example.challenge_letssign.ui.components.LetsSignPrimaryButton
+import com.example.challenge_letssign.ui.components.LetsSignSkeletonCard
 import com.example.challenge_letssign.ui.components.LetsSignStatusChip
 import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.theme.Challenge_letsSignTheme
@@ -58,8 +54,10 @@ import com.example.challenge_letssign.utils.DateTimeFormatters
 fun SignerDashboardScreen(
     signerId: String,
     signerName: String,
+    initialTab: SignerDocumentTab = SignerDocumentTab.PENDING,
     onLogout: () -> Unit,
     onOpenDocumentForSigning: (String) -> Unit = {},
+    onOpenSignedDocumentDetails: (String) -> Unit = onOpenDocumentForSigning,
     viewModel: SignerDashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -68,12 +66,18 @@ fun SignerDashboardScreen(
         viewModel.observeDocuments(signerId)
     }
 
+    LaunchedEffect(initialTab) {
+        viewModel.onSelectTab(initialTab)
+    }
+
     SignerDashboardContent(
         signerId = signerId,
         signerName = signerName,
         uiState = uiState,
         onSelectTab = viewModel::onSelectTab,
-        onDocumentClick = onOpenDocumentForSigning,
+        onRetryLoad = viewModel::onRetryLoad,
+        onPendingDocumentClick = onOpenDocumentForSigning,
+        onSignedDocumentClick = onOpenSignedDocumentDetails,
         onLogout = onLogout
     )
 }
@@ -84,131 +88,196 @@ fun SignerDashboardContent(
     signerName: String,
     uiState: SignerDashboardUiState,
     onSelectTab: (SignerDocumentTab) -> Unit,
-    onDocumentClick: (String) -> Unit,
+    onRetryLoad: () -> Unit = {},
+    onPendingDocumentClick: (String) -> Unit,
+    onSignedDocumentClick: (String) -> Unit = onPendingDocumentClick,
     onLogout: () -> Unit
 ) {
-    var selectedBottomTab by rememberSaveable { mutableStateOf(LetsSignBottomNavTab.SIGNATURES) }
+    val firstName = signerName.trim().substringBefore(" ").ifBlank { "Rafael" }
+    val docs = uiState.visibleDocuments
 
-    Scaffold(
-        containerColor = LetsSignColors.Mist,
-        bottomBar = {
-            LetsSignBottomNavigationBar(
-                selectedTab = selectedBottomTab,
-                onTabSelected = { selectedBottomTab = it }
-            )
-        }
-    ) { innerPadding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LetsSignColors.Mist)
+            .navigationBarsPadding()
+    ) {
+        // Header gradiente da Home do Signatário (Home Signatário Pendentes.png)
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = innerPadding.calculateBottomPadding())
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp))
+                .background(brush = LetsSignColors.HeaderGradient)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 24.dp)
         ) {
-            when (selectedBottomTab) {
-                LetsSignBottomNavTab.DOCUMENTS,
-                LetsSignBottomNavTab.MY_SIGNATURES,
-                LetsSignBottomNavTab.WAITING_OTHERS,
-                LetsSignBottomNavTab.CONTACTS,
-                LetsSignBottomNavTab.SIGNATURES -> {
-                    LetsSignGradientHeader(
-                        title = "Assinaturas",
-                        subtitle = "Olá, ${signerName.substringBefore(" ")}. Confira os documentos enviados para você."
-                    )
-
-                    SignerStatusTabRow(
-                        selectedTab = uiState.selectedTab,
-                        pendingCount = uiState.pendingDocuments.size,
-                        signedCount = uiState.signedDocuments.size,
-                        onTabSelected = onSelectTab
-                    )
-
-                    val docs = uiState.visibleDocuments
-                    if (docs.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .background(brush = LetsSignColors.IconGradient),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    DocumentFileIcon(color = Color.White, size = 34.dp)
-                                }
-                                Spacer(modifier = Modifier.height(20.dp))
-                                Text(
-                                    text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
-                                        "Nenhum documento pendente"
-                                    } else {
-                                        "Nenhum documento assinado ainda"
-                                    },
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
-                                        "Quando um documento for enviado para você assinar, ele aparecerá aqui."
-                                    } else {
-                                        "Os documentos que você assinar ficarão disponíveis nesta aba."
-                                    },
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        color = LetsSignColors.Muted
-                                    ),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 24.dp,
-                                end = 24.dp,
-                                top = 20.dp,
-                                bottom = 32.dp
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(items = docs, key = { it.document.id }) { item ->
-                                SignerDocumentCard(
-                                    item = item,
-                                    onClick = { onDocumentClick(item.document.id) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                LetsSignBottomNavTab.PROFILE -> {
-                    LetsSignGradientHeader(
-                        title = "Perfil",
-                        subtitle = "Você está autenticado como Signatário."
-                    )
-                    Column(
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LetsSignBrandLogo()
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White.copy(alpha = 0.14f))
+                            .clickable(onClick = onLogout)
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
                     ) {
                         Text(
-                            text = signerName,
-                            style = MaterialTheme.typography.headlineSmall
+                            text = "Sair",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Text(
-                            text = "ID: $signerId",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LetsSignSecondaryButton(
-                            text = "Sair da conta",
-                            onClick = onLogout
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "Meus documentos",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        lineHeight = 34.sp
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Olá, $firstName. Veja o que precisa da sua assinatura.",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
+                )
+            }
+        }
+
+        // Abas Pendentes | Assinados (sem barra inferior, conforme fluxo_telas.md)
+        SignerStatusTabRow(
+            selectedTab = uiState.selectedTab,
+            onTabSelected = onSelectTab
+        )
+
+        when {
+            uiState.isLoading -> {
+                // Home Signatário Carregando.png
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    repeat(3) {
+                        LetsSignSkeletonCard()
+                    }
+                }
+            }
+
+            uiState.hasError -> {
+                // Home Signatário Erro.png
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(LetsSignColors.ErrorSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ErrorCircleIcon(color = LetsSignColors.Error, size = 30.dp)
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "Não foi possível carregar",
+                        style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Verifique sua conexão e tente novamente.",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = LetsSignColors.Muted
+                        ),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(22.dp))
+                    LetsSignPrimaryButton(
+                        text = "Tentar novamente",
+                        onClick = onRetryLoad,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            docs.isEmpty() -> {
+                // Home Signatário Vazio.png
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(LetsSignColors.VioletSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        DocumentFileIcon(color = LetsSignColors.Primary, size = 32.dp)
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
+                            "Nenhum documento pendente"
+                        } else {
+                            "Nenhum documento assinado ainda"
+                        },
+                        style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
+                            "Quando alguém enviar um documento para você assinar, ele aparece aqui."
+                        } else {
+                            "Os documentos que você assinar ficarão disponíveis nesta aba."
+                        },
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = LetsSignColors.Muted
+                        ),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 24.dp,
+                        end = 24.dp,
+                        top = 18.dp,
+                        bottom = 32.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(items = docs, key = { it.document.id }) { item ->
+                        SignerDocumentCard(
+                            item = item,
+                            onClick = {
+                                if (item.isPendingForMe) {
+                                    onPendingDocumentClick(item.document.id)
+                                } else {
+                                    onSignedDocumentClick(item.document.id)
+                                }
+                            }
                         )
                     }
                 }
@@ -220,8 +289,6 @@ fun SignerDashboardContent(
 @Composable
 private fun SignerStatusTabRow(
     selectedTab: SignerDocumentTab,
-    pendingCount: Int,
-    signedCount: Int,
     onTabSelected: (SignerDocumentTab) -> Unit
 ) {
     Row(
@@ -232,7 +299,6 @@ private fun SignerStatusTabRow(
     ) {
         SignerDocumentTab.entries.forEach { tab ->
             val isSelected = tab == selectedTab
-            val count = if (tab == SignerDocumentTab.PENDING) pendingCount else signedCount
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -241,16 +307,16 @@ private fun SignerStatusTabRow(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "${tab.title} ($count)",
-                    fontSize = 15.sp,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (isSelected) LetsSignColors.Primary else LetsSignColors.Body
+                    text = tab.title,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isSelected) LetsSignColors.Primary else LetsSignColors.Muted
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
+                        .height(2.5.dp)
                         .background(if (isSelected) LetsSignColors.Primary else LetsSignColors.Line)
                 )
             }
@@ -264,36 +330,37 @@ private fun SignerDocumentCard(
     onClick: () -> Unit
 ) {
     val doc = item.document
-    val roleLabel = when (item.myRoleClass) {
-        SignerRoleClass.CONTRATANTE -> "Contratante"
-        SignerRoleClass.CONTRATADO -> "Contratado"
-        SignerRoleClass.TESTEMUNHA -> "Testemunha"
+    val isSigned = item.isSignedByMe
+    val subtitle = if (isSigned && item.mySignedAt != null) {
+        "Assinado em ${DateTimeFormatters.formatTimestampWithAs(item.mySignedAt)}"
+    } else {
+        "Enviado em ${DateTimeFormatters.formatTimestamp(doc.sentAt ?: doc.createdAt)}"
     }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         color = Color.White,
-        shadowElevation = 4.dp
+        shadowElevation = 2.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, LetsSignColors.Line, RoundedCornerShape(22.dp))
-                .padding(20.dp)
+                .border(1.dp, LetsSignColors.Line, RoundedCornerShape(18.dp))
+                .padding(18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(48.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(LetsSignColors.VioletSoft),
                     contentAlignment = Alignment.Center
                 ) {
-                    DocumentFileIcon(color = LetsSignColors.Primary, size = 26.dp)
+                    DocumentFileIcon(color = LetsSignColors.Primary, size = 24.dp)
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -303,13 +370,14 @@ private fun SignerDocumentCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Enviado em ${DateTimeFormatters.formatTimestamp(doc.createdAt)}",
+                        text = subtitle,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            color = LetsSignColors.Muted
+                            color = LetsSignColors.Muted,
+                            fontSize = 14.sp
                         )
                     )
                 }
-                ChevronRightIcon(color = LetsSignColors.Body, size = 18.dp)
+                ChevronRightIcon(color = LetsSignColors.Muted, size = 18.dp)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -319,29 +387,35 @@ private fun SignerDocumentCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isSigned) {
                     LetsSignStatusChip(
-                        label = if (item.isSignedByMe) "Assinado por você" else "Aguardando sua assinatura",
-                        style = if (item.isSignedByMe) StatusChipStyle.COMPLETED else StatusChipStyle.PARTIAL
+                        label = "Concluído",
+                        style = StatusChipStyle.COMPLETED
                     )
+                    Text(
+                        text = "Assinado",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.Body,
+                            fontSize = 14.sp
+                        )
+                    )
+                } else {
                     LetsSignStatusChip(
-                        label = roleLabel,
-                        style = StatusChipStyle.ROLE
+                        label = "Aguardando você",
+                        style = StatusChipStyle.WAITING_YOU
+                    )
+                    val deadlineText = doc.deadlineAt?.let {
+                        DateTimeFormatters.formatDateOnly(it)
+                    } ?: "05/11/2026"
+                    Text(
+                        text = "Prazo: $deadlineText",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.Body,
+                            fontSize = 14.sp
+                        )
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            LinearProgressIndicator(
-                progress = { item.progressFraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(999.dp)),
-                color = if (item.isSignedByMe) LetsSignColors.Success else LetsSignColors.Primary,
-                trackColor = LetsSignColors.VioletSoft
-            )
         }
     }
 }
@@ -352,10 +426,10 @@ private fun SignerDashboardScreenPreview() {
     Challenge_letsSignTheme {
         SignerDashboardContent(
             signerId = "signer-1",
-            signerName = "Carlos Silva",
+            signerName = "Rafael Tavares",
             uiState = SignerDashboardUiState(),
             onSelectTab = {},
-            onDocumentClick = {},
+            onPendingDocumentClick = {},
             onLogout = {}
         )
     }
