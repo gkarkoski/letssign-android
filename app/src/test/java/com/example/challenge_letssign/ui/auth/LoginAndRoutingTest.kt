@@ -36,7 +36,10 @@ class LoginAndRoutingTest {
         Dispatchers.setMain(testDispatcher)
         fakeUserRepository = FakeAuthUserRepository()
         loginUseCase = LoginUseCase(fakeUserRepository)
-        viewModel = LoginViewModel(loginUseCase)
+        viewModel = LoginViewModel(loginUseCase).apply {
+            sendCodeDelayMillis = 0L
+            enableCountdownTicker = false
+        }
     }
 
     @After
@@ -45,36 +48,41 @@ class LoginAndRoutingTest {
     }
 
     @Test
-    fun `onSubmitLogin with invalid email format sets Figma emailError message`() = runTest(testDispatcher) {
-        viewModel.onEmailChanged("marina@empresa")
-        viewModel.onPasswordChanged("123456")
-
-        viewModel.onSubmitLogin()
+    fun `Login Erro - onSendCodeClick with invalid email sets exact Figma error message`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("admin@exemplo")
+        viewModel.onSendCodeClick()
 
         val state = viewModel.uiState.value
-        assertEquals("E-mail inválido. Confira o formato.", state.emailError)
+        assertEquals(LoginStep.EMAIL, state.step)
+        assertEquals("Informe um e-mail válido, como nome@empresa.com.br.", state.emailError)
         assertNull(state.authenticatedUser)
     }
 
     @Test
-    fun `onSubmitLogin with empty fields sets email and password errors`() = runTest(testDispatcher) {
-        viewModel.onSubmitLogin()
+    fun `Login Geral to Login Codigo - valid email transitions to CODE step with 00_42 countdown`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("admin@exemplo.com.br")
+        viewModel.onSendCodeClick()
 
         val state = viewModel.uiState.value
-        assertEquals("Informe o seu e-mail.", state.emailError)
-        assertEquals("Informe a sua senha.", state.passwordError)
-        assertNull(state.authenticatedUser)
+        assertEquals(LoginStep.CODE, state.step)
+        assertFalse(state.isSendingCode)
+        assertNull(state.emailError)
+        assertEquals(42, state.resendCountdownSeconds)
+        assertEquals("00:42", state.formattedCountdown)
     }
 
     @Test
-    fun `ADMIN login authenticates and resolves to AdminDashboard route`() = runTest(testDispatcher) {
-        viewModel.onEmailChanged("admin@letssign.com")
-        viewModel.onPasswordChanged("123456")
+    fun `ADMIN OTP verification authenticates and resolves to AdminDashboard route`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("admin@exemplo.com.br")
+        viewModel.onSendCodeClick()
 
-        viewModel.onSubmitLogin()
+        viewModel.onOtpCodeChanged("482910")
+        assertTrue(viewModel.uiState.value.isCodeComplete)
+
+        viewModel.onVerifyCodeClick()
 
         val state = viewModel.uiState.value
-        assertFalse(state.isLoading)
+        assertNull(state.codeError)
         assertNotNull(state.authenticatedUser)
         assertEquals(UserRole.ADMIN, state.authenticatedUser?.role)
 
@@ -83,14 +91,15 @@ class LoginAndRoutingTest {
     }
 
     @Test
-    fun `SIGNER login authenticates and resolves to SignerDashboard route`() = runTest(testDispatcher) {
-        viewModel.onEmailChanged("carlos@letssign.com")
-        viewModel.onPasswordChanged("123456")
+    fun `SIGNER OTP verification authenticates and resolves to SignerDashboard route`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("rafael.tavares@exemplo.com.br")
+        viewModel.onSendCodeClick()
 
-        viewModel.onSubmitLogin()
+        viewModel.onOtpCodeChanged("123456")
+        viewModel.onVerifyCodeClick()
 
         val state = viewModel.uiState.value
-        assertFalse(state.isLoading)
+        assertNull(state.codeError)
         assertNotNull(state.authenticatedUser)
         assertEquals(UserRole.SIGNER, state.authenticatedUser?.role)
 
@@ -99,28 +108,45 @@ class LoginAndRoutingTest {
     }
 
     @Test
-    fun `wrong password sets generalError and keeps authenticatedUser null`() = runTest(testDispatcher) {
-        viewModel.onEmailChanged("admin@letssign.com")
-        viewModel.onPasswordChanged("senha_errada")
+    fun `Login Codigo invalido - invalid code 482915 sets codeError and Reenviar codigo resets state`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("admin@exemplo.com.br")
+        viewModel.onSendCodeClick()
 
-        viewModel.onSubmitLogin()
+        viewModel.onOtpCodeChanged("482915")
+        viewModel.onVerifyCodeClick()
 
-        val state = viewModel.uiState.value
-        assertEquals("E-mail ou senha inválidos.", state.generalError)
-        assertNull(state.authenticatedUser)
+        val errorState = viewModel.uiState.value
+        assertEquals(
+            "Código inválido ou expirado. Confira os dígitos ou peça um novo código.",
+            errorState.codeError
+        )
+        assertNull(errorState.authenticatedUser)
+
+        // Tapping Reenviar código clears error and resets code & countdown
+        viewModel.onResendCodeClick()
+        val afterResend = viewModel.uiState.value
+        assertNull(afterResend.codeError)
+        assertEquals("", afterResend.otpCode)
+        assertEquals(42, afterResend.resendCountdownSeconds)
     }
 
     @Test
-    fun `onTogglePasswordVisibility flips password visibility state`() {
-        assertFalse(viewModel.uiState.value.isPasswordVisible)
-        viewModel.onTogglePasswordVisibility()
-        assertTrue(viewModel.uiState.value.isPasswordVisible)
+    fun `Usar outro e-mail returns from CODE step to EMAIL step`() = runTest(testDispatcher) {
+        viewModel.onEmailChanged("admin@exemplo.com.br")
+        viewModel.onSendCodeClick()
+        assertEquals(LoginStep.CODE, viewModel.uiState.value.step)
+
+        viewModel.onUseAnotherEmailClick()
+        val state = viewModel.uiState.value
+        assertEquals(LoginStep.EMAIL, state.step)
+        assertEquals("", state.otpCode)
+        assertNull(state.codeError)
     }
 
     private class FakeAuthUserRepository : UserRepository {
         private val users = listOf(
-            User("admin-1", "Admin LetsSign", "admin@letssign.com", "11999990000", "123456", UserRole.ADMIN),
-            User("signer-1", "Carlos Silva", "carlos@letssign.com", "11988881111", "123456", UserRole.SIGNER)
+            User("admin-1", "Administrador LetsSign", "admin@exemplo.com.br", "11999990000", "123456", UserRole.ADMIN),
+            User("signer-1", "Rafael Tavares", "rafael.tavares@exemplo.com.br", "11988881111", "123456", UserRole.SIGNER)
         )
 
         override suspend fun login(email: String, password: String): AppResult<User> {
@@ -132,16 +158,26 @@ class LoginAndRoutingTest {
             }
         }
 
+        override suspend fun requestLoginCode(email: String): AppResult<User> {
+            val found = users.firstOrNull { it.email.equals(email, ignoreCase = true) }
+            return if (found != null) {
+                AppResult.Success(found)
+            } else {
+                AppResult.Error(LoginUseCase.INVALID_EMAIL_MESSAGE)
+            }
+        }
+
+        override suspend fun verifyLoginCode(email: String, code: String): AppResult<User> {
+            if (code.length != 6 || code == "482915" || code == "000000") {
+                return AppResult.Error(LoginUseCase.INVALID_OTP_MESSAGE)
+            }
+            val found = users.firstOrNull { it.email.equals(email, ignoreCase = true) }
+                ?: return AppResult.Error(LoginUseCase.INVALID_EMAIL_MESSAGE)
+            return AppResult.Success(found)
+        }
+
         override suspend fun getUserById(userId: String): AppResult<User> =
             AppResult.Error("Not implemented")
-
-        override suspend fun requestLoginCode(email: String): AppResult<User> =
-            AppResult.Error("Not implemented")
-
-        override suspend fun verifyLoginCode(
-            email: String,
-            code: String
-        ): AppResult<User> = AppResult.Error("Not implemented")
 
         override suspend fun getUserByEmail(email: String): AppResult<User?> =
             AppResult.Success(null)

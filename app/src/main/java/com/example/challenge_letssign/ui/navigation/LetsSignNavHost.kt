@@ -1,5 +1,9 @@
 package com.example.challenge_letssign.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -68,9 +72,40 @@ fun LetsSignNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = LetsSignRoutes.LOGIN
+        startDestination = LetsSignRoutes.LOGIN,
+        // Transições especificadas em fluxo_telas.md:
+        // Avançar: empurra da direita para a esquerda, 300 ms
+        // Voltar: empurra da esquerda para a direita, 300 ms
+        enterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(300)
+            )
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(300)
+            )
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(300)
+            )
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(300)
+            )
+        }
     ) {
-        composable(route = LetsSignRoutes.LOGIN) {
+        composable(
+            route = LetsSignRoutes.LOGIN,
+            enterTransition = { fadeIn(animationSpec = tween(200)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) }
+        ) {
             LoginScreen(
                 onLoginSuccess = { user ->
                     val targetRoute = LetsSignRoutes.resolvePostLoginRoute(user)
@@ -84,6 +119,8 @@ fun LetsSignNavHost(
 
         composable(
             route = LetsSignRoutes.ADMIN_DASHBOARD,
+            enterTransition = { fadeIn(animationSpec = tween(200)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) },
             arguments = listOf(
                 navArgument("userId") { type = NavType.StringType },
                 navArgument("userName") { type = NavType.StringType }
@@ -203,6 +240,8 @@ fun LetsSignNavHost(
 
         composable(
             route = LetsSignRoutes.SIGNER_DASHBOARD,
+            enterTransition = { fadeIn(animationSpec = tween(200)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) },
             arguments = listOf(
                 navArgument("userId") { type = NavType.StringType },
                 navArgument("userName") { type = NavType.StringType }

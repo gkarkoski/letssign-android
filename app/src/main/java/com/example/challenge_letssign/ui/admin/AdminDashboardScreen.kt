@@ -117,7 +117,9 @@ fun AdminDashboardContent(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 when (selectedBottomTab) {
-                    LetsSignBottomNavTab.DOCUMENTS -> {
+                    LetsSignBottomNavTab.DOCUMENTS,
+                    LetsSignBottomNavTab.MY_SIGNATURES,
+                    LetsSignBottomNavTab.WAITING_OTHERS -> {
                         LetsSignGradientHeader(
                             title = "Documentos",
                             subtitle = "Acompanhe o que você enviou para assinatura."
@@ -224,6 +226,7 @@ fun AdminDashboardContent(
                         }
                     }
 
+                    LetsSignBottomNavTab.CONTACTS,
                     LetsSignBottomNavTab.SIGNATURES -> {
                         SignerManagementScreen()
                     }

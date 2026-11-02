@@ -35,17 +35,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 
 private val PillShape = RoundedCornerShape(999.dp)
 private val TextFieldShape = RoundedCornerShape(14.dp)
+private val OtpBoxShape = RoundedCornerShape(12.dp)
 
 @Composable
 fun LetsSignPrimaryButton(
@@ -132,6 +138,32 @@ fun LetsSignTextButton(
 }
 
 @Composable
+fun LetsSignAiButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(PillShape)
+            .background(LetsSignColors.VioletSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        SparklesIcon(color = LetsSignColors.Primary, size = 16.dp)
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(
+                color = LetsSignColors.Primary,
+                fontWeight = FontWeight.SemiBold
+            )
+        )
+    }
+}
+
+@Composable
 fun LetsSignTextField(
     label: String,
     value: String,
@@ -140,6 +172,7 @@ fun LetsSignTextField(
     placeholder: String = "",
     helperText: String? = null,
     errorMessage: String? = null,
+    showInlineErrorText: Boolean = true,
     isSuccess: Boolean = false,
     enabled: Boolean = true,
     singleLine: Boolean = true,
@@ -159,11 +192,10 @@ fun LetsSignTextField(
         isFocused -> LetsSignColors.Primary
         else -> LetsSignColors.Line
     }
-    val borderWidth = if (isFocused || hasError || isSuccess) 2.dp else 1.25.dp
+    val borderWidth = if (isFocused || hasError || isSuccess) 1.75.dp else 1.25.dp
     val containerColor = if (enabled) LetsSignColors.Mist else LetsSignColors.Mist.copy(alpha = 0.6f)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // Rótulo sempre visível acima do campo
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium.copy(
@@ -223,7 +255,7 @@ fun LetsSignTextField(
             }
         )
 
-        if (hasError) {
+        if (hasError && showInlineErrorText) {
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -249,6 +281,166 @@ fun LetsSignTextField(
             )
         }
     }
+}
+
+/**
+ * Componente de 6 dígitos para o Código de acesso (Login Código / Login Código inválido).
+ */
+@Composable
+fun LetsSignOtpInput(
+    code: String,
+    onCodeChanged: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "Código de acesso",
+    hasError: Boolean = false,
+    onDone: () -> Unit = {}
+) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val sanitizedCode = code.filter { it.isDigit() }.take(6)
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = LetsSignColors.Ink,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp
+            )
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        BasicTextField(
+            value = sanitizedCode,
+            onValueChange = { raw ->
+                val digits = raw.filter { it.isDigit() }.take(6)
+                onCodeChanged(digits)
+            },
+            singleLine = true,
+            interactionSource = interactionSource,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.NumberPassword,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { onDone() }
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
+            decorationBox = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val activeIndex = sanitizedCode.length.coerceAtMost(5)
+                    for (index in 0 until 6) {
+                        val char = sanitizedCode.getOrNull(index)?.toString().orEmpty()
+                        val isActiveBox = (isFocused || sanitizedCode.isNotEmpty()) &&
+                            index == activeIndex &&
+                            sanitizedCode.length < 6 &&
+                            !hasError
+
+                        val borderColor = when {
+                            hasError -> LetsSignColors.Error
+                            isActiveBox -> LetsSignColors.Primary
+                            else -> LetsSignColors.Line
+                        }
+                        val borderWidth = if (hasError || isActiveBox) 1.75.dp else 1.25.dp
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(62.dp)
+                                .clip(OtpBoxShape)
+                                .background(Color.White)
+                                .border(borderWidth, borderColor, OtpBoxShape)
+                                .clickable { focusRequester.requestFocus() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = char,
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    color = LetsSignColors.Ink,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 22.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun LetsSignSearchBar(
+    query: String,
+    onQueryChanged: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    containerColor: Color = Color.White
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val isHighlighted = isFocused || query.isNotBlank()
+    val borderColor = if (isHighlighted) LetsSignColors.Primary else LetsSignColors.Line
+    val borderWidth = if (isHighlighted) 1.5.dp else 1.25.dp
+    val iconColor = if (isHighlighted) LetsSignColors.Primary else LetsSignColors.Muted
+
+    BasicTextField(
+        value = query,
+        onValueChange = onQueryChanged,
+        singleLine = true,
+        interactionSource = interactionSource,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            color = LetsSignColors.Ink,
+            fontSize = 16.sp
+        ),
+        cursorBrush = SolidColor(LetsSignColors.Primary),
+        modifier = modifier.fillMaxWidth(),
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(containerColor)
+                    .border(borderWidth, borderColor, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SearchIcon(color = iconColor, size = 19.dp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(modifier = Modifier.weight(1f)) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = LetsSignColors.Muted,
+                                fontSize = 16.sp
+                            )
+                        )
+                    }
+                    innerTextField()
+                }
+                if (query.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onQueryChanged("") }
+                            .padding(4.dp)
+                    ) {
+                        CloseIcon(color = LetsSignColors.Muted, size = 16.dp)
+                    }
+                }
+            }
+        }
+    )
 }
 
 @Composable
