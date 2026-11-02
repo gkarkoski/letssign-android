@@ -72,7 +72,8 @@ class LocalPdfStorageRepository @Inject constructor(
                 ImportedPdfFile(
                     internalFileName = internalFileName,
                     originalDisplayName = displayName,
-                    pageCount = pageCount
+                    pageCount = pageCount,
+                    fileSizeBytes = destFile.length()
                 )
             )
         } catch (e: Exception) {

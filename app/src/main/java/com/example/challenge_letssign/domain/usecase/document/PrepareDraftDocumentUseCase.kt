@@ -1,9 +1,12 @@
 package com.example.challenge_letssign.domain.usecase.document
 
+import com.example.challenge_letssign.domain.model.AdditionalAuthOption
 import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.DocumentSigner
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureStatus
+import com.example.challenge_letssign.domain.model.SignerAuthMethod
+import com.example.challenge_letssign.domain.model.SignerDeliveryChannel
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.utils.AppResult
@@ -12,7 +15,12 @@ import javax.inject.Inject
 
 data class SelectedSignerAssignment(
     val signerId: String,
-    val roleClass: SignerRoleClass
+    val roleClass: SignerRoleClass,
+    val deliveryChannel: SignerDeliveryChannel = SignerDeliveryChannel.EMAIL,
+    val authMethod: SignerAuthMethod = SignerAuthMethod.EMAIL,
+    val additionalAuths: List<AdditionalAuthOption> = emptyList(),
+    val language: String = "Português",
+    val colorIndex: Int = 0
 )
 
 class PrepareDraftDocumentUseCase @Inject constructor(
@@ -22,6 +30,9 @@ class PrepareDraftDocumentUseCase @Inject constructor(
         existingDocumentId: String? = null,
         title: String,
         internalFileName: String,
+        originalDisplayName: String = "",
+        pageCount: Int = 1,
+        fileSizeBytes: Long = 0L,
         ownerAdminId: String,
         signerAssignments: List<SelectedSignerAssignment>,
         nowUtcMillis: Long = System.currentTimeMillis()
@@ -47,6 +58,9 @@ class PrepareDraftDocumentUseCase @Inject constructor(
                     documentId = existingDoc.id,
                     title = trimmedTitle,
                     internalFileName = internalFileName,
+                    originalDisplayName = originalDisplayName.ifBlank { existingDoc.originalDisplayName },
+                    pageCount = pageCount.coerceAtLeast(1),
+                    fileSizeBytes = if (fileSizeBytes > 0L) fileSizeBytes else existingDoc.fileSizeBytes,
                     ownerAdminId = existingDoc.ownerAdminId,
                     signerAssignments = signerAssignments,
                     createdAtMillis = existingDoc.createdAt
@@ -59,6 +73,9 @@ class PrepareDraftDocumentUseCase @Inject constructor(
             documentId = documentId,
             title = trimmedTitle,
             internalFileName = internalFileName,
+            originalDisplayName = originalDisplayName.ifBlank { "$trimmedTitle.pdf" },
+            pageCount = pageCount.coerceAtLeast(1),
+            fileSizeBytes = fileSizeBytes,
             ownerAdminId = ownerAdminId,
             signerAssignments = signerAssignments,
             createdAtMillis = nowUtcMillis
@@ -69,6 +86,9 @@ class PrepareDraftDocumentUseCase @Inject constructor(
         documentId: String,
         title: String,
         internalFileName: String,
+        originalDisplayName: String,
+        pageCount: Int,
+        fileSizeBytes: Long,
         ownerAdminId: String,
         signerAssignments: List<SelectedSignerAssignment>,
         createdAtMillis: Long
@@ -77,6 +97,9 @@ class PrepareDraftDocumentUseCase @Inject constructor(
             id = documentId,
             title = title,
             fileName = internalFileName,
+            originalDisplayName = originalDisplayName,
+            pageCount = pageCount,
+            fileSizeBytes = fileSizeBytes,
             status = DocumentStatus.DRAFT,
             createdAt = createdAtMillis,
             ownerAdminId = ownerAdminId
@@ -98,14 +121,19 @@ class PrepareDraftDocumentUseCase @Inject constructor(
             if (removeRes is AppResult.Error) return removeRes
         }
 
-        for (assignment in signerAssignments) {
+        signerAssignments.forEachIndexed { index, assignment ->
             val crossRef = DocumentSigner(
                 documentId = documentId,
                 signerId = assignment.signerId,
                 roleClass = assignment.roleClass,
                 status = SignatureStatus.PENDING,
                 signedAt = null,
-                signatureIp = null
+                signatureIp = null,
+                deliveryChannel = assignment.deliveryChannel,
+                authMethod = assignment.authMethod,
+                additionalAuths = assignment.additionalAuths,
+                language = assignment.language,
+                colorIndex = index % 3
             )
             val assignRes = documentRepository.assignSignerToDocument(crossRef)
             if (assignRes is AppResult.Error) return assignRes
