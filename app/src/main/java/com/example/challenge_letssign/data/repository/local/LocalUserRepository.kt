@@ -44,7 +44,7 @@ class LocalUserRepository @Inject constructor(
                 }
                 val resolvedEmail = resolveAliasEmail(trimmed)
                 val userEntity = findUserByEmailOrRoleHint(resolvedEmail, trimmed)
-                    ?: throw IllegalArgumentException(INVALID_EMAIL_MESSAGE)
+                    ?: throw IllegalArgumentException(USER_NOT_FOUND_MESSAGE)
                 userEntity.toDomain()
             }
         }
@@ -59,7 +59,7 @@ class LocalUserRepository @Inject constructor(
                 val trimmed = email.trim()
                 val resolvedEmail = resolveAliasEmail(trimmed)
                 val userEntity = findUserByEmailOrRoleHint(resolvedEmail, trimmed)
-                    ?: throw IllegalArgumentException(INVALID_EMAIL_MESSAGE)
+                    ?: throw IllegalArgumentException(USER_NOT_FOUND_MESSAGE)
                 userEntity.toDomain()
             }
         }
@@ -154,13 +154,8 @@ class LocalUserRepository @Inject constructor(
         val byOriginal = userDao.getUserByEmail(originalEmail)
         if (byOriginal != null) return byOriginal
 
-        // No Login Geral unificado: se digitar qualquer e-mail contendo "admin" faz fallback para o Admin;
-        // caso contrário, se for um e-mail válido de teste não cadastrado, faz fallback para o Signatário Rafael Tavares.
-        return if (originalEmail.lowercase().startsWith("admin")) {
-            userDao.getUserByEmail("admin@exemplo.com.br")
-        } else {
-            userDao.getUserByEmail("rafael.tavares@exemplo.com.br")
-        }
+        // E-mail não cadastrado: não faz fallback para nenhum usuário (evita acesso indevido à conta de outra pessoa).
+        return null
     }
 
     private fun resolveAliasEmail(email: String): String = when (email.lowercase()) {
@@ -178,6 +173,7 @@ class LocalUserRepository @Inject constructor(
 
     companion object {
         const val INVALID_EMAIL_MESSAGE = "Informe um e-mail válido, como nome@empresa.com.br."
+        const val USER_NOT_FOUND_MESSAGE = "E-mail não cadastrado. Confira o endereço ou fale com o administrador."
         const val INVALID_OTP_MESSAGE =
             "Código inválido ou expirado. Confira os dígitos ou peça um novo código."
         val INVALID_TEST_OTP_CODES = setOf("000000", "482915")
