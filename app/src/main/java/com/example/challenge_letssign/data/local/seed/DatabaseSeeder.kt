@@ -48,6 +48,14 @@ object DatabaseSeeder {
 
     const val SEED_PDF_FILE_NAME = "contrato-servicos.pdf"
 
+    /**
+     * Cada documento pré-carregado precisa do SEU PRÓPRIO arquivo PDF.
+     * Antes, os 5 documentos apontavam para o mesmo `contrato-servicos.pdf`; ao assinar um deles,
+     * o PDFBox sobrescrevia esse arquivo único e a assinatura aparecia em todos os outros documentos
+     * (e também nos novos documentos criados a partir do PDF de exemplo).
+     */
+    fun seedFileNameFor(documentId: String): String = "seed_$documentId.pdf"
+
     val initialUsers: List<UserEntity> = listOf(
         UserEntity(
             id = MOCK_ADMIN_ID,
@@ -153,7 +161,7 @@ object DatabaseSeeder {
         DocumentEntity(
             id = DOC_CONTRATO_SERVICOS_ID,
             title = "Contrato de serviços",
-            fileName = SEED_PDF_FILE_NAME,
+            fileName = seedFileNameFor(DOC_CONTRATO_SERVICOS_ID),
             originalDisplayName = "contrato-servicos.pdf",
             status = DocumentStatus.PENDING,
             createdAt = timestampOf(2026, 10, 28, 10, 32),
@@ -167,7 +175,7 @@ object DatabaseSeeder {
         DocumentEntity(
             id = DOC_PROPOSTA_COMERCIAL_ID,
             title = "Proposta comercial",
-            fileName = SEED_PDF_FILE_NAME,
+            fileName = seedFileNameFor(DOC_PROPOSTA_COMERCIAL_ID),
             originalDisplayName = "proposta-comercial.pdf",
             status = DocumentStatus.PENDING,
             createdAt = timestampOf(2026, 10, 27, 16, 10),
@@ -181,7 +189,7 @@ object DatabaseSeeder {
         DocumentEntity(
             id = DOC_ADITIVO_CONTRATUAL_ID,
             title = "Aditivo contratual",
-            fileName = SEED_PDF_FILE_NAME,
+            fileName = seedFileNameFor(DOC_ADITIVO_CONTRATUAL_ID),
             originalDisplayName = "aditivo-contratual.pdf",
             status = DocumentStatus.PENDING,
             createdAt = timestampOf(2026, 10, 26, 10, 5),
@@ -195,7 +203,7 @@ object DatabaseSeeder {
         DocumentEntity(
             id = DOC_TERMO_ADESAO_ID,
             title = "Termo de adesão",
-            fileName = SEED_PDF_FILE_NAME,
+            fileName = seedFileNameFor(DOC_TERMO_ADESAO_ID),
             originalDisplayName = "termo-adesao.pdf",
             status = DocumentStatus.COMPLETED,
             createdAt = timestampOf(2026, 10, 25, 17, 48),
@@ -209,7 +217,7 @@ object DatabaseSeeder {
         DocumentEntity(
             id = DOC_AUTORIZACAO_IMAGEM_ID,
             title = "Autorização de imagem",
-            fileName = SEED_PDF_FILE_NAME,
+            fileName = seedFileNameFor(DOC_AUTORIZACAO_IMAGEM_ID),
             originalDisplayName = "autorizacao-imagem.pdf",
             status = DocumentStatus.COMPLETED,
             createdAt = timestampOf(2026, 10, 25, 14, 40),
@@ -486,6 +494,13 @@ object DatabaseSeeder {
     ) {
         if (filesDir != null) {
             val seedPdf = ensureSeedPdfFileExists(filesDir)
+            // Cria uma cópia independente do PDF modelo para cada documento pré-carregado.
+            initialDocuments.forEach { doc ->
+                val docFile = File(filesDir, doc.fileName)
+                if (!docFile.exists() || docFile.length() <= 0L) {
+                    runCatching { seedPdf.copyTo(docFile, overwrite = true) }
+                }
+            }
             if (appContext != null) {
                 publishSamplePdfToPublicDownloadsIfPossible(appContext, seedPdf)
             }
