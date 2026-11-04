@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 enum class SignerDocumentTab(val title: String) {
     PENDING("Pendentes"),
-    SIGNED("Assinados")
+    SIGNED("Vigentes")
 }
 
 data class SignerDashboardUiState(
@@ -27,11 +27,13 @@ data class SignerDashboardUiState(
 ) {
     val pendingDocuments: List<SignerAssignedDocument>
         get() = allAssignedDocuments.filter {
-            it.isPendingForMe || (it.isSignedByMe && it.document.status == DocumentStatus.PENDING)
+            it.document.status == DocumentStatus.PENDING
         }
 
     val signedDocuments: List<SignerAssignedDocument>
-        get() = allAssignedDocuments.filter { it.isSignedByMe }
+        get() = allAssignedDocuments.filter {
+            it.document.status == DocumentStatus.COMPLETED
+        }
 
     val visibleDocuments: List<SignerAssignedDocument>
         get() = when (selectedTab) {
