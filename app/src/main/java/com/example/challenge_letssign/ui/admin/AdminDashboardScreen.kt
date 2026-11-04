@@ -572,7 +572,7 @@ private fun AdminMySignaturesTabScreen(
 
         TwoTabSelectorBar(
             leftTitle = "Pendentes",
-            rightTitle = "Assinados",
+            rightTitle = "Vigentes",
             isLeftSelected = isPendingTab,
             onSelectLeft = { onSelectTab(MySignaturesTab.PENDING) },
             onSelectRight = { onSelectTab(MySignaturesTab.SIGNED) }
