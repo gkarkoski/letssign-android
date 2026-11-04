@@ -11,15 +11,20 @@ import com.example.challenge_letssign.data.local.entity.DocumentEntity
 import com.example.challenge_letssign.data.local.entity.DocumentSignerCrossRef
 import com.example.challenge_letssign.data.local.entity.SignatureFieldEntity
 import com.example.challenge_letssign.data.local.entity.UserEntity
+import com.example.challenge_letssign.data.local.dao.ContactGroupDao
+import com.example.challenge_letssign.data.local.entity.ContactGroupEntity
+import com.example.challenge_letssign.data.local.entity.ContactGroupMemberEntity
 
 @Database(
     entities = [
         UserEntity::class,
         DocumentEntity::class,
         DocumentSignerCrossRef::class,
-        SignatureFieldEntity::class
+        SignatureFieldEntity::class,
+        ContactGroupEntity::class,
+        ContactGroupMemberEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(RoomConverters::class)
@@ -27,7 +32,7 @@ abstract class LetsSignDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun documentDao(): DocumentDao
     abstract fun signatureFieldDao(): SignatureFieldDao
-
+    abstract fun contactGroupDao(): ContactGroupDao
     companion object {
         const val DATABASE_NAME = "letssign_database.db"
     }

@@ -12,6 +12,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import com.example.challenge_letssign.data.local.dao.ContactGroupDao
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -43,4 +44,9 @@ object DatabaseModule {
     @Singleton
     fun provideSignatureFieldDao(database: LetsSignDatabase): SignatureFieldDao =
         database.signatureFieldDao()
+
+    @Provides
+    @Singleton
+    fun provideContactGroupDao(database: LetsSignDatabase): ContactGroupDao =
+        database.contactGroupDao()
 }

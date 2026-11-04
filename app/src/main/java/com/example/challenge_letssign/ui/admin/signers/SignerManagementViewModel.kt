@@ -4,12 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.challenge_letssign.domain.model.PersonType
 import com.example.challenge_letssign.domain.model.User
+import com.example.challenge_letssign.domain.repository.ContactGroup
+import com.example.challenge_letssign.domain.usecase.contactgroup.ManageContactGroupUseCase
+import com.example.challenge_letssign.domain.usecase.contactgroup.ObserveContactGroupsUseCase
 import com.example.challenge_letssign.domain.usecase.signer.DeleteSignerUseCase
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignersUseCase
 import com.example.challenge_letssign.domain.usecase.signer.SaveSignerUseCase
+import com.example.challenge_letssign.domain.usecase.contactgroup.ObserveContactGroupMembersUseCase
 import com.example.challenge_letssign.utils.AppResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -17,6 +23,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SignerManagementUiState(
+    val contactGroups: List<ContactGroup> = emptyList(),
+    val openedGroupId: String? = null,
+    val openedGroupMembers: List<User> = emptyList(),
+    val isGroupDetailVisible: Boolean = false,
+    val isEditingGroupName: Boolean = false,
+    val editedGroupName: String = "",
+    val isAddingGroupMembers: Boolean = false,
+    val groupDetailSearchQuery: String = "",
     val allSigners: List<User> = emptyList(),
     val searchQuery: String = "",
     val isFormVisible: Boolean = false,
@@ -101,17 +115,42 @@ data class SignerManagementUiState(
 class SignerManagementViewModel @Inject constructor(
     observeSignersUseCase: ObserveSignersUseCase,
     private val saveSignerUseCase: SaveSignerUseCase,
-    private val deleteSignerUseCase: DeleteSignerUseCase
+    private val deleteSignerUseCase: DeleteSignerUseCase,
+    private val observeContactGroupsUseCase: ObserveContactGroupsUseCase,
+    private val observeContactGroupMembersUseCase: ObserveContactGroupMembersUseCase,
+    private val manageContactGroupUseCase: ManageContactGroupUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SignerManagementUiState())
     val uiState: StateFlow<SignerManagementUiState> = _uiState.asStateFlow()
+
+    private val openedGroupId = MutableStateFlow<String?>(null)
 
     init {
         viewModelScope.launch {
             observeSignersUseCase().collect { signers ->
                 _uiState.update { it.copy(allSigners = signers) }
             }
+        }
+        viewModelScope.launch {
+            observeContactGroupsUseCase().collect { groups ->
+                _uiState.update { it.copy(contactGroups = groups) }
+            }
+        }
+        viewModelScope.launch {
+            openedGroupId
+                .flatMapLatest { groupId ->
+                    if (groupId == null) {
+                        flowOf(emptyList())
+                    } else {
+                        observeContactGroupMembersUseCase(groupId)
+                    }
+                }
+                .collect { members ->
+                    _uiState.update {
+                        it.copy(openedGroupMembers = members)
+                    }
+                }
         }
     }
 
@@ -267,12 +306,39 @@ class SignerManagementViewModel @Inject constructor(
     }
 
     fun onConfirmGroupPickerSelection() {
-        _uiState.update { state ->
-            state.copy(
-                groupConfirmedMemberIds = state.groupPickerSelectedIds,
-                isGroupContactPickerSheetOpen = false,
-                groupPickerSearchQuery = ""
-            )
+        val state = _uiState.value
+        val openedGroupId = state.openedGroupId
+
+        if (openedGroupId != null) {
+            val existingMemberIds = state.openedGroupMembers
+                .map { it.id }
+                .toSet()
+
+            val newMemberIds = state.groupPickerSelectedIds - existingMemberIds
+
+            _uiState.update {
+                it.copy(
+                    isGroupContactPickerSheetOpen = false,
+                    groupPickerSearchQuery = ""
+                )
+            }
+
+            if (newMemberIds.isNotEmpty()) {
+                onAddMembersToGroup(newMemberIds)
+            } else {
+                _uiState.update {
+                    it.copy(isAddingGroupMembers = false)
+                }
+            }
+        } else {
+            // Fluxo original: criação de grupo
+            _uiState.update {
+                it.copy(
+                    groupConfirmedMemberIds = it.groupPickerSelectedIds,
+                    isGroupContactPickerSheetOpen = false,
+                    groupPickerSearchQuery = ""
+                )
+            }
         }
     }
 
@@ -286,11 +352,13 @@ class SignerManagementViewModel @Inject constructor(
 
     fun onCreateGroup() {
         val state = _uiState.value
-        val trimmedGroupName = state.groupNameInput.trim()
-        if (trimmedGroupName.isBlank() || state.groupConfirmedMemberIds.isEmpty()) return
+        val name = state.groupNameInput.trim()
+        val memberIds = state.groupConfirmedMemberIds
+
+        if (name.isBlank() || memberIds.isEmpty()) return
 
         viewModelScope.launch {
-            when (val res = saveSignerUseCase.createGroup(trimmedGroupName, state.groupConfirmedMemberIds)) {
+            when (val result = manageContactGroupUseCase.create(name, memberIds)) {
                 is AppResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -299,15 +367,16 @@ class SignerManagementViewModel @Inject constructor(
                             groupNameInput = "",
                             groupConfirmedMemberIds = emptySet(),
                             groupPickerSelectedIds = emptySet(),
-                            snackbarMessage = "Grupo \"$trimmedGroupName\" criado com sucesso.",
+                            snackbarMessage = "Grupo \"$name\" criado com sucesso.",
                             isErrorSnackbar = false
                         )
                     }
                 }
+
                 is AppResult.Error -> {
                     _uiState.update {
                         it.copy(
-                            snackbarMessage = res.message,
+                            snackbarMessage = result.message,
                             isErrorSnackbar = true
                         )
                     }
@@ -315,7 +384,6 @@ class SignerManagementViewModel @Inject constructor(
             }
         }
     }
-
     fun onPersonTypeChanged(newType: PersonType) {
         // Na edição o Tipo não muda (conforme Contato Editar.png)
         if (_uiState.value.editingSignerId != null) return
@@ -503,5 +571,119 @@ class SignerManagementViewModel @Inject constructor(
 
     fun onDismissSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    fun onOpenGroup(groupId: String) {
+        openedGroupId.value = groupId
+
+        _uiState.update {
+            it.copy(
+                openedGroupId = groupId,
+                isGroupDetailVisible = true,
+                isEditingGroupName = false,
+                isAddingGroupMembers = false,
+                groupDetailSearchQuery = ""
+            )
+        }
+    }
+
+    fun onCloseGroup() {
+        openedGroupId.value = null
+
+        _uiState.update {
+            it.copy(
+                openedGroupId = null,
+                openedGroupMembers = emptyList(),
+                isGroupDetailVisible = false,
+                isEditingGroupName = false,
+                isAddingGroupMembers = false
+            )
+        }
+    }
+
+    fun onStartEditGroupName() {
+        val group = _uiState.value.contactGroups
+            .firstOrNull { it.id == _uiState.value.openedGroupId } ?: return
+
+        _uiState.update {
+            it.copy(
+                isEditingGroupName = true,
+                editedGroupName = group.name
+            )
+        }
+    }
+
+    fun onEditedGroupNameChanged(name: String) {
+        _uiState.update { it.copy(editedGroupName = name) }
+    }
+
+    fun onSaveGroupName() {
+        val state = _uiState.value
+        val groupId = state.openedGroupId ?: return
+        val name = state.editedGroupName.trim()
+        if (name.isBlank()) return
+
+        viewModelScope.launch {
+            when (val result = manageContactGroupUseCase.rename(groupId, name)) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isEditingGroupName = false)
+                }
+                is AppResult.Error -> _uiState.update {
+                    it.copy(snackbarMessage = result.message, isErrorSnackbar = true)
+                }
+            }
+        }
+    }
+
+    fun onRemoveGroupMember(userId: String) {
+        val groupId = _uiState.value.openedGroupId ?: return
+        viewModelScope.launch {
+            manageContactGroupUseCase.removeMember(groupId, userId)
+        }
+    }
+
+    fun onAddMembersToGroup(memberIds: Set<String>) {
+        val groupId = _uiState.value.openedGroupId ?: return
+        viewModelScope.launch {
+            when (val result = manageContactGroupUseCase.addMembers(groupId, memberIds)) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isAddingGroupMembers = false)
+                }
+                is AppResult.Error -> _uiState.update {
+                    it.copy(snackbarMessage = result.message, isErrorSnackbar = true)
+                }
+            }
+        }
+    }
+
+    fun onStartAddGroupMembers() {
+        _uiState.update { state ->
+            val existingMemberIds = state.openedGroupMembers
+                .map { it.id }
+                .toSet()
+
+            state.copy(
+                isAddingGroupMembers = true,
+                isGroupContactPickerSheetOpen = true,
+                groupPickerSelectedIds = existingMemberIds,
+                groupPickerSearchQuery = ""
+            )
+        }
+    }
+
+    fun onCancelAddGroupMembers() {
+        _uiState.update { it.copy(isAddingGroupMembers = false) }
+    }
+
+    fun onDeleteGroup() {
+        val groupId = _uiState.value.openedGroupId ?: return
+        viewModelScope.launch {
+            when (val result = manageContactGroupUseCase.delete(groupId)) {
+                is AppResult.Success -> onCloseGroup()
+                is AppResult.Error -> _uiState.update {
+                    it.copy(snackbarMessage = result.message, isErrorSnackbar = true)
+                }
+            }
+        }
     }
 }
