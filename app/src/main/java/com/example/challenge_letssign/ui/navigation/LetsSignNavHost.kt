@@ -154,7 +154,7 @@ fun LetsSignNavHost(
                     navController.navigate(
                         LetsSignRoutes.signerDocumentSign(
                             documentId = documentId,
-                            signerId = com.example.challenge_letssign.data.local.seed.DatabaseSeeder.MOCK_SIGNER_2_ID
+                            signerId = userId
                         )
                     )
                 }

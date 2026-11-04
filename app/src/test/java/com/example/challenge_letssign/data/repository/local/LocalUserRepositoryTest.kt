@@ -45,7 +45,7 @@ class LocalUserRepositoryTest {
         assertEquals(7, fakeUserDao.getUserCount())
 
         val signers = repository.observeSigners().first()
-        assertEquals(6, signers.size)
+        assertEquals(7, signers.size)
         assertTrue(signers.any { it.name == "Marina Albuquerque" && it.groupName == "Jurídico" })
         assertTrue(signers.any { it.name == "Nova Soluções Ltda." && it.personType == PersonType.JURIDICA })
 
@@ -143,6 +143,13 @@ class LocalUserRepositoryTest {
         override fun observeUsersByRole(role: UserRole): Flow<List<UserEntity>> =
             usersFlow.map { list -> list.filter { it.role == role }.sortedBy { it.name } }
 
+        override fun observeSignersAndAdmins(): Flow<List<UserEntity>> =
+            usersFlow.map { list ->
+                list.filter {
+                    it.role == UserRole.SIGNER ||
+                            it.role == UserRole.ADMIN
+                }.sortedBy { it.name }
+            }
         override suspend fun getUserCount(): Int = usersFlow.value.size
 
         override suspend fun insertUser(user: UserEntity) {

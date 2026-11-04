@@ -82,7 +82,8 @@ class LocalUserRepository @Inject constructor(
         }
 
     override fun observeSigners(): Flow<List<User>> =
-        observeUsersByRole(UserRole.SIGNER)
+        userDao.observeSignersAndAdmins()
+            .map { entities -> entities.map { it.toDomain() } }
 
     override fun observeUsersByRole(role: UserRole): Flow<List<User>> =
         userDao.observeUsersByRole(role)

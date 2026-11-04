@@ -24,6 +24,9 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE role = :role ORDER BY name ASC")
     fun observeUsersByRole(role: UserRole): Flow<List<UserEntity>>
 
+    @Query("SELECT * FROM users WHERE role IN ('ADMIN', 'SIGNER') ORDER BY name ASC")
+    fun observeSignersAndAdmins(): Flow<List<UserEntity>>
+
     @Query("SELECT COUNT(*) FROM users")
     suspend fun getUserCount(): Int
 
