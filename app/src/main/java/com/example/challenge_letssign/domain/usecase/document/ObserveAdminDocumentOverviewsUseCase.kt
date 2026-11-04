@@ -16,7 +16,8 @@ data class AdminDocumentOverview(
     val document: Document,
     val totalSigners: Int,
     val signedCount: Int,
-    val signerNames: List<String> = emptyList()
+    val signerNames: List<String> = emptyList(),
+    val adminSigned: Boolean = false
 ) {
     val isDraft: Boolean
         get() = document.status == DocumentStatus.DRAFT
@@ -48,13 +49,24 @@ class ObserveAdminDocumentOverviewsUseCase @Inject constructor(
                     val itemFlows = documents.map { doc ->
                         documentRepository.observeDocumentSigners(doc.id).map { signers ->
                             val total = signers.size
-                            val signed = signers.count { it.documentSigner.status == SignatureStatus.SIGNED }
+
+                            val signed = signers.count {
+                                it.documentSigner.status == SignatureStatus.SIGNED
+                            }
+
                             val names = signers.map { it.signer.name }
+
+                            val adminSigned = signers.any {
+                                it.documentSigner.signerId == adminId &&
+                                        it.documentSigner.status == SignatureStatus.SIGNED
+                            }
+
                             AdminDocumentOverview(
                                 document = doc,
                                 totalSigners = total,
                                 signedCount = signed,
-                                signerNames = names
+                                signerNames = names,
+                                adminSigned = adminSigned
                             )
                         }
                     }

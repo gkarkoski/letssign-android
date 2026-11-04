@@ -15,7 +15,7 @@ import javax.inject.Inject
 
 enum class MySignaturesTab(val title: String) {
     PENDING("Pendentes"),
-    SIGNED("Assinados")
+    SIGNED("Vigentes")
 }
 
 data class AdminDashboardUiState(
@@ -62,7 +62,7 @@ data class AdminDashboardUiState(
         get() = allDocuments.filter { it.isSentWaitingAll || it.isPartiallySigned }
 
     val mySignedDocuments: List<AdminDocumentOverview>
-        get() = completedDocuments
+        get() = allDocuments.filter {it.adminSigned && it.isCompleted}
 
     private fun filterByQuery(
         list: List<AdminDocumentOverview>,
