@@ -415,8 +415,8 @@ private fun SignerDocumentCard(
 
             if (isInPendingTab) {
                 // Linha 1: Status geral do documento ("Parcialmente assinado" + "2/3 assinaturas")
-                val displaySigned = if (item.signedCount > 0) item.signedCount else 2
-                val displayTotal = item.totalSigners.coerceAtLeast(3)
+                val displaySigned = item.signedCount
+                val displayTotal = item.totalSigners
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -424,8 +424,16 @@ private fun SignerDocumentCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LetsSignStatusChip(
-                        label = "Parcialmente assinado",
-                        style = StatusChipStyle.PARTIAL
+                        label = if (item.signedCount > 0) {
+                            "Parcialmente assinado"
+                        } else {
+                            "Aguardando assinaturas"
+                        },
+                        style = if (item.signedCount > 0) {
+                            StatusChipStyle.PARTIAL
+                        } else {
+                            StatusChipStyle.WAITING_YOU
+                        }
                     )
                     Text(
                         text = "$displaySigned/$displayTotal assinaturas",

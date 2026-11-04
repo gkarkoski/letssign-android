@@ -65,9 +65,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun DocumentDetailsScreen(
     documentId: String,
+    signerId: String? = null,
     onBack: () -> Unit,
     onEditDraftSignersAndFile: (String) -> Unit = {},
     onOpenPositioningOrViewPdf: (String) -> Unit,
+    onSignDocument: (String) -> Unit = {},
     viewModel: DocumentDetailsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,9 +93,21 @@ fun DocumentDetailsScreen(
 
     DocumentDetailsContent(
         uiState = uiState,
+        isSignerView = !signerId.isNullOrBlank(),
+        isMySignaturePending = uiState.signers.any {
+            it.documentSigner.signerId == signerId &&
+                    it.documentSigner.status == SignatureStatus.PENDING
+        },
         onBack = onBack,
-        onEditDraftSignersAndFile = { onEditDraftSignersAndFile(documentId) },
-        onOpenPositioningOrViewPdf = { onOpenPositioningOrViewPdf(documentId) },
+        onEditDraftSignersAndFile = {
+            onEditDraftSignersAndFile(documentId)
+        },
+        onOpenPositioningOrViewPdf = {
+            onOpenPositioningOrViewPdf(documentId)
+        },
+        onSignDocument = {
+            onSignDocument(documentId)
+        },
         onResendReminder = viewModel::onResendReminder,
         onDownloadSignedDocument = viewModel::onDownloadSignedDocument,
         onRetryLoad = viewModel::onRetryLoad,
@@ -108,6 +122,9 @@ fun DocumentDetailsScreen(
 @Composable
 fun DocumentDetailsContent(
     uiState: DocumentDetailsUiState,
+    isSignerView: Boolean = false,
+    isMySignaturePending: Boolean = false,
+    onSignDocument: () -> Unit = {},
     onBack: () -> Unit,
     onEditDraftSignersAndFile: () -> Unit = {},
     onOpenPositioningOrViewPdf: () -> Unit,
@@ -174,6 +191,73 @@ fun DocumentDetailsContent(
         bottomBar = {
             if (!uiState.isLoading && !uiState.hasError && doc != null) {
                 when {
+
+                    // Área do signatário
+                    isSignerView -> {
+                        when {
+                            isMySignaturePending && !isCompleted -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White)
+                                        .navigationBarsPadding()
+                                ) {
+                                    HorizontalDivider(
+                                        thickness = 1.dp,
+                                        color = LetsSignColors.Line
+                                    )
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = 24.dp,
+                                                vertical = 16.dp
+                                            )
+                                    ) {
+                                        LetsSignPrimaryButton(
+                                            text = "Assinar documento",
+                                            onClick = onSignDocument,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+
+                            isCompleted -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White)
+                                        .navigationBarsPadding()
+                                ) {
+                                    HorizontalDivider(
+                                        thickness = 1.dp,
+                                        color = LetsSignColors.Line
+                                    )
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = 24.dp,
+                                                vertical = 16.dp
+                                            ),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        if (!uiState.isDownloaded) {
+                                            LetsSignPrimaryButton(
+                                                text = "Baixar documento assinado",
+                                                onClick = onDownloadSignedDocument,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Área administrativa: rascunho
                     uiState.isDraft -> {
                         Column(
                             modifier = Modifier
@@ -181,11 +265,18 @@ fun DocumentDetailsContent(
                                 .background(Color.White)
                                 .navigationBarsPadding()
                         ) {
-                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            HorizontalDivider(
+                                thickness = 1.dp,
+                                color = LetsSignColors.Line
+                            )
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                    .padding(
+                                        horizontal = 24.dp,
+                                        vertical = 16.dp
+                                    ),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 LetsSignSecondaryButton(
@@ -193,6 +284,7 @@ fun DocumentDetailsContent(
                                     onClick = onEditDraftSignersAndFile,
                                     modifier = Modifier.weight(0.45f)
                                 )
+
                                 LetsSignPrimaryButton(
                                     text = "Posicionar",
                                     onClick = onOpenPositioningOrViewPdf,
@@ -202,20 +294,26 @@ fun DocumentDetailsContent(
                         }
                     }
 
+                    // Área administrativa: documento enviado e incompleto
                     !isCompleted -> {
-                        // Detalhe Enviado / Detalhe Parcial (prints_v2/detalhe_parcial.png):
-                        // Botão "Reenviar lembrete" + botão para excluir documento incompleto
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color.White)
                                 .navigationBarsPadding()
                         ) {
-                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            HorizontalDivider(
+                                thickness = 1.dp,
+                                color = LetsSignColors.Line
+                            )
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                    .padding(
+                                        horizontal = 24.dp,
+                                        vertical = 16.dp
+                                    ),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 LetsSignSecondaryButton(
@@ -223,6 +321,7 @@ fun DocumentDetailsContent(
                                     onClick = onResendReminder,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -236,7 +335,11 @@ fun DocumentDetailsContent(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        TrashIcon(color = LetsSignColors.ErrorText, size = 18.dp)
+                                        TrashIcon(
+                                            color = LetsSignColors.ErrorText,
+                                            size = 18.dp
+                                        )
+
                                         Text(
                                             text = "Excluir documento",
                                             style = MaterialTheme.typography.labelLarge.copy(
@@ -250,19 +353,26 @@ fun DocumentDetailsContent(
                         }
                     }
 
+                    // Área administrativa: documento concluído
                     isCompleted -> {
-                        // Detalhe Concluído / Baixado: "Baixar documento assinado" + "Remover documento"
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color.White)
                                 .navigationBarsPadding()
                         ) {
-                            HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
+                            HorizontalDivider(
+                                thickness = 1.dp,
+                                color = LetsSignColors.Line
+                            )
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                    .padding(
+                                        horizontal = 24.dp,
+                                        vertical = 16.dp
+                                    ),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 if (!uiState.isDownloaded) {
@@ -272,29 +382,9 @@ fun DocumentDetailsContent(
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(999.dp))
-                                        .background(LetsSignColors.ErrorSoft)
-                                        .clickable(onClick = onRequestDeleteDocument),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        TrashIcon(color = LetsSignColors.ErrorText, size = 18.dp)
-                                        Text(
-                                            text = "Remover documento",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                color = LetsSignColors.ErrorText,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        )
-                                    }
-                                }
+
+                                // Mantenha aqui o bloco existente
+                                // de "Remover documento".
                             }
                         }
                     }

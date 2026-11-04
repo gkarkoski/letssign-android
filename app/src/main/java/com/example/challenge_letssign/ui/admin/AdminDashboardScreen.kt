@@ -163,15 +163,7 @@ fun AdminDashboardContent(
                         adminName = adminName,
                         uiState = uiState,
                         onSelectTab = onSelectMySignaturesTab,
-                        onPendingDocumentClick = { docId ->
-                            val targetDoc = uiState.myPendingSignatures.firstOrNull { it.document.id == docId }
-                            if (targetDoc != null && targetDoc.isPartiallySigned) {
-                                // Já assinado por você, aguardando terceiros -> abre detalhes
-                                onDocumentClick(docId)
-                            } else {
-                                onSignDocumentClick(docId)
-                            }
-                        },
+                        onPendingDocumentClick = { docId -> onSignDocumentClick(docId) },
                         onSignedDocumentClick = onDocumentClick,
                         onLogout = onLogout
                     )
