@@ -2,6 +2,7 @@ package com.example.challenge_letssign
 
 import android.app.Application
 import com.example.challenge_letssign.data.di.IoDispatcher
+import com.example.challenge_letssign.data.local.LetsSignDatabase
 import com.example.challenge_letssign.data.local.dao.DocumentDao
 import com.example.challenge_letssign.data.local.dao.SignatureFieldDao
 import com.example.challenge_letssign.data.local.dao.UserDao
@@ -16,6 +17,9 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class LetsSignApplication : Application() {
+
+    @Inject
+    lateinit var database: LetsSignDatabase
 
     @Inject
     lateinit var userDao: UserDao
@@ -42,6 +46,7 @@ class LetsSignApplication : Application() {
         // Garante a inserção dos dados mockados (Admin, 6 Signatários do Figma e Documentos exemplo) em Dispatchers.IO
         applicationScope.launch {
             DatabaseSeeder.seedIfNeeded(
+                database = database,
                 userDao = userDao,
                 documentDao = documentDao,
                 signatureFieldDao = signatureFieldDao,
