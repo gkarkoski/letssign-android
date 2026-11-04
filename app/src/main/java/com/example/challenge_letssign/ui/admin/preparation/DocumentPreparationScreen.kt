@@ -1524,18 +1524,18 @@ private fun SignerSelectionSheetContent(
             contentPadding = PaddingValues(vertical = 4.dp)
         ) {
             // Se houver grupos correspondentes (ex.: "Jurídico · 2 signatários" em Novo Doc Selecionar Signatários Busca.png)
-            items(items = matchingGroups, key = { "group_${it.groupName}" }) { group ->
+            items(items = matchingGroups, key = { "group_${it.groupId}" }) { group ->
                 Column {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onToggleGroup(group.groupName) }
+                            .clickable { onToggleGroup(group.groupId) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         LetsSignCheckbox(
                             checked = group.isFullySelected,
-                            onCheckedChange = { onToggleGroup(group.groupName) }
+                            onCheckedChange = { onToggleGroup(group.groupId) }
                         )
                         Spacer(modifier = Modifier.width(14.dp))
                         Box(

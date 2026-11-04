@@ -11,13 +11,15 @@ import com.example.challenge_letssign.domain.model.SignerAuthMethod
 import com.example.challenge_letssign.domain.model.SignerDeliveryChannel
 import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.model.User
-import com.example.challenge_letssign.domain.model.UserRole
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.usecase.document.ImportPdfUseCase
 import com.example.challenge_letssign.domain.usecase.document.PrepareDraftDocumentUseCase
 import com.example.challenge_letssign.domain.usecase.document.SelectedSignerAssignment
 import com.example.challenge_letssign.domain.usecase.signer.ObserveSignersUseCase
 import com.example.challenge_letssign.domain.usecase.signer.SaveSignerUseCase
+import com.example.challenge_letssign.domain.repository.ContactGroup
+import com.example.challenge_letssign.domain.usecase.contactgroup.ObserveContactGroupsUseCase
+import com.example.challenge_letssign.domain.usecase.contactgroup.ObserveContactGroupMembersUseCase
 import com.example.challenge_letssign.utils.AppResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -53,6 +55,7 @@ data class AiSuggestedSignerItem(
 )
 
 data class ContactGroupSummary(
+    val groupId: String,
     val groupName: String,
     val members: List<User>,
     val isFullySelected: Boolean
@@ -77,12 +80,15 @@ data class DocumentPreparationUiState(
     val failedFileName: String? = null,
     val pdfErrorMessage: String? = null,
     val availableSigners: List<User> = emptyList(),
+    val contactGroups: List<ContactGroup> = emptyList(),
+    val groupMembersById: Map<String, List<User>> = emptyMap(),
     val assignedSigners: List<AssignedSignerUiModel> = emptyList(),
     // Seleção e Substituição de Signatários (Etapa 2)
     val isSignerSelectionSheetOpen: Boolean = false,
     val replacingSignerId: String? = null,
     val pickerSearchQuery: String = "",
     val pickerSelectedIds: Set<String> = emptySet(),
+    val pickerSelectedGroupIds: Set<String> = emptySet(),
     // Cadastrar novo contato no meio do processo (novo_doc_selecionar_signatarios.png)
     val isInlineNewContactDialogOpen: Boolean = false,
     val newContactPersonType: PersonType = PersonType.FISICA,
@@ -132,15 +138,17 @@ data class DocumentPreparationUiState(
     val matchingPickerGroups: List<ContactGroupSummary>
         get() {
             val q = pickerSearchQuery.trim().lowercase()
-            if (q.isEmpty()) return emptyList()
-            return availableSigners
-                .filter { it.groupName.isNotBlank() && it.groupName.lowercase().contains(q) }
-                .groupBy { it.groupName }
-                .map { (groupName, members) ->
+
+            return contactGroups
+                .filter { q.isEmpty() || it.name.lowercase().contains(q) }
+                .map { group ->
+                    val members = groupMembersById[group.id].orEmpty()
+
                     ContactGroupSummary(
-                        groupName = groupName,
+                        groupId = group.id,
+                        groupName = group.name,
                         members = members,
-                        isFullySelected = members.isNotEmpty() && members.all { it.id in pickerSelectedIds }
+                        isFullySelected = group.id in pickerSelectedGroupIds
                     )
                 }
         }
@@ -152,37 +160,14 @@ data class DocumentPreparationUiState(
 @HiltViewModel
 class DocumentPreparationViewModel @Inject constructor(
     observeSignersUseCase: ObserveSignersUseCase,
+    private val observeContactGroupsUseCase: ObserveContactGroupsUseCase,
+    private val observeContactGroupMembersUseCase: ObserveContactGroupMembersUseCase,
     private val importPdfUseCase: ImportPdfUseCase,
     private val prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
     private val documentRepository: DocumentRepository,
     private val saveSignerUseCase: SaveSignerUseCase
 ) : ViewModel() {
 
-    constructor(
-        observeSignersUseCase: ObserveSignersUseCase,
-        importPdfUseCase: ImportPdfUseCase,
-        prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
-        documentRepository: DocumentRepository
-    ) : this(
-        observeSignersUseCase = observeSignersUseCase,
-        importPdfUseCase = importPdfUseCase,
-        prepareDraftDocumentUseCase = prepareDraftDocumentUseCase,
-        documentRepository = documentRepository,
-        saveSignerUseCase = SaveSignerUseCase(
-            object : com.example.challenge_letssign.domain.repository.UserRepository {
-                override suspend fun login(email: String, password: String) = AppResult.Error("")
-                override suspend fun requestLoginCode(email: String) = AppResult.Error("")
-                override suspend fun verifyLoginCode(email: String, code: String) = AppResult.Error("")
-                override suspend fun getUserById(userId: String) = AppResult.Error("")
-                override suspend fun getUserByEmail(email: String) = AppResult.Success(null)
-                override fun observeSigners() = kotlinx.coroutines.flow.emptyFlow<List<User>>()
-                override fun observeUsersByRole(role: UserRole) = kotlinx.coroutines.flow.emptyFlow<List<User>>()
-                override suspend fun createUser(user: User) = AppResult.Success(user)
-                override suspend fun updateUser(user: User) = AppResult.Success(user)
-                override suspend fun deleteUser(userId: String) = AppResult.Success(Unit)
-            }
-        )
-    )
 
     private val _uiState = MutableStateFlow(DocumentPreparationUiState())
     val uiState: StateFlow<DocumentPreparationUiState> = _uiState.asStateFlow()
@@ -199,10 +184,12 @@ class DocumentPreparationViewModel @Inject constructor(
             observeSignersUseCase().collect { signers ->
                 _uiState.update { state ->
                     val signersById = signers.associateBy { it.id }
+
                     val updatedAssigned = state.assignedSigners.mapNotNull { assigned ->
                         val updatedUser = signersById[assigned.user.id]
                         updatedUser?.let { assigned.copy(user = it) }
                     }
+
                     state.copy(
                         availableSigners = signers,
                         assignedSigners = updatedAssigned
@@ -210,8 +197,26 @@ class DocumentPreparationViewModel @Inject constructor(
                 }
             }
         }
-    }
 
+        viewModelScope.launch {
+            observeContactGroupsUseCase().collect { groups ->
+                _uiState.update { it.copy(contactGroups = groups) }
+
+                groups.forEach { group ->
+                    launch {
+                        observeContactGroupMembersUseCase(group.id).collect { members ->
+                            _uiState.update { state ->
+                                state.copy(
+                                    groupMembersById = state.groupMembersById +
+                                            (group.id to members)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     fun loadExistingDraftIfNeeded(existingDocumentId: String?) {
         if (existingDocumentId.isNullOrBlank() || loadedDraftId == existingDocumentId) return
         loadedDraftId = existingDocumentId
@@ -364,6 +369,7 @@ class DocumentPreparationViewModel @Inject constructor(
                 isSignerSelectionSheetOpen = true,
                 replacingSignerId = null,
                 pickerSearchQuery = "",
+                pickerSelectedGroupIds = emptySet(),
                 pickerSelectedIds = state.assignedSigners.map { it.user.id }.toSet()
             )
         }
@@ -410,24 +416,33 @@ class DocumentPreparationViewModel @Inject constructor(
         }
     }
 
-    fun onTogglePickerGroupSelection(groupName: String) {
+    fun onTogglePickerGroupSelection(groupId: String) {
         _uiState.update { state ->
-            val groupMemberIds = state.availableSigners
-                .filter { it.groupName.equals(groupName, ignoreCase = true) }
-                .map { it.id }
-                .toSet()
-            if (groupMemberIds.isEmpty()) return@update state
+            val members = state.groupMembersById[groupId].orEmpty()
+            val memberIds = members.map { it.id }.toSet()
 
-            val allAlreadySelected = groupMemberIds.all { it in state.pickerSelectedIds }
-            val updatedSet = if (allAlreadySelected) {
-                state.pickerSelectedIds - groupMemberIds
+            if (memberIds.isEmpty()) return@update state
+
+            val groupIsSelected = groupId in state.pickerSelectedGroupIds
+
+            val updatedGroupIds = if (groupIsSelected) {
+                state.pickerSelectedGroupIds - groupId
             } else {
-                state.pickerSelectedIds + groupMemberIds
+                state.pickerSelectedGroupIds + groupId
             }
-            state.copy(pickerSelectedIds = updatedSet)
+
+            val updatedSignerIds = if (groupIsSelected) {
+                state.pickerSelectedIds - memberIds
+            } else {
+                state.pickerSelectedIds + memberIds
+            }
+
+            state.copy(
+                pickerSelectedGroupIds = updatedGroupIds,
+                pickerSelectedIds = updatedSignerIds
+            )
         }
     }
-
     fun onConfirmPickerSelection() {
         _uiState.update { state ->
             val replacingId = state.replacingSignerId

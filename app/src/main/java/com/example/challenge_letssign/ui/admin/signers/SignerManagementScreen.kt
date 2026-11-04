@@ -101,11 +101,24 @@ fun SignerManagementScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    BackHandler(enabled = uiState.isFormVisible || uiState.isNewGroupVisible) {
+    BackHandler(
+        enabled = uiState.isFormVisible ||
+                uiState.isGroupContactPickerSheetOpen ||
+                uiState.isNewGroupVisible ||
+                uiState.isGroupDetailVisible
+    ) {
         when {
-            uiState.isFormVisible -> viewModel.onDismissForm()
-            uiState.isGroupContactPickerSheetOpen -> viewModel.onDismissGroupContactPickerSheet()
-            uiState.isNewGroupVisible -> viewModel.onDismissNewGroupFlow()
+            uiState.isGroupContactPickerSheetOpen ->
+                viewModel.onDismissGroupContactPickerSheet()
+
+            uiState.isFormVisible ->
+                viewModel.onDismissForm()
+
+            uiState.isGroupDetailVisible ->
+                viewModel.onCloseGroup()
+
+            uiState.isNewGroupVisible ->
+                viewModel.onDismissNewGroupFlow()
         }
     }
 
@@ -142,7 +155,17 @@ fun SignerManagementScreen(
         onConfirmGroupPickerSelection = viewModel::onConfirmGroupPickerSelection,
         onToggleConfirmedGroupMember = viewModel::onToggleConfirmedGroupMember,
         onCreateGroup = viewModel::onCreateGroup,
-        onOpenCreateFormFromGroupPicker = viewModel::onOpenCreateFormFromGroupPicker
+        onOpenCreateFormFromGroupPicker = viewModel::onOpenCreateFormFromGroupPicker,
+        onOpenGroup = viewModel::onOpenGroup,
+        onCloseGroup = viewModel::onCloseGroup,
+        onStartEditGroupName = viewModel::onStartEditGroupName,
+        onEditedGroupNameChanged = viewModel::onEditedGroupNameChanged,
+        onSaveGroupName = viewModel::onSaveGroupName,
+        onRemoveGroupMember = viewModel::onRemoveGroupMember,
+        onAddMembersToGroup = viewModel::onAddMembersToGroup,
+        onStartAddGroupMembers = viewModel::onStartAddGroupMembers,
+        onCancelAddGroupMembers = viewModel::onCancelAddGroupMembers,
+        onDeleteGroup = viewModel::onDeleteGroup
     )
 }
 
@@ -175,10 +198,21 @@ fun SignerManagementContent(
     onToggleConfirmedGroupMember: (String) -> Unit = {},
     onCreateGroup: () -> Unit = {},
     onOpenCreateFormFromGroupPicker: () -> Unit = onOpenCreateForm,
+    onOpenGroup: (String) -> Unit = {},
+    onCloseGroup: () -> Unit = {},
+    onStartEditGroupName: () -> Unit = {},
+    onEditedGroupNameChanged: (String) -> Unit = {},
+    onSaveGroupName: () -> Unit = {},
+    onRemoveGroupMember: (String) -> Unit = {},
+    onAddMembersToGroup: (Set<String>) -> Unit = {},
+    onStartAddGroupMembers: () -> Unit = {},
+    onCancelAddGroupMembers: () -> Unit = {},
+    onDeleteGroup: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val activeSubScreen = when {
         uiState.isFormVisible -> "FORM"
+        uiState.isGroupDetailVisible -> "GROUP_DETAIL"
         uiState.isNewGroupVisible -> "GROUP"
         else -> "LIST"
     }
@@ -215,6 +249,20 @@ fun SignerManagementContent(
                     onCreateGroupClick = onCreateGroup
                 )
             }
+            "GROUP_DETAIL" -> {
+                ContactGroupDetailScreenContent(
+                    uiState = uiState,
+                    onBack = onCloseGroup,
+                    onStartEditGroupName = onStartEditGroupName,
+                    onEditedGroupNameChanged = onEditedGroupNameChanged,
+                    onSaveGroupName = onSaveGroupName,
+                    onRemoveGroupMember = onRemoveGroupMember,
+                    onStartAddGroupMembers = onStartAddGroupMembers,
+                    onCancelAddGroupMembers = onCancelAddGroupMembers,
+                    onAddMembersToGroup = onAddMembersToGroup,
+                    onDeleteGroup = onDeleteGroup
+                )
+            }
             else -> {
                 ContactsListScreenContent(
                     uiState = uiState,
@@ -222,13 +270,17 @@ fun SignerManagementContent(
                     onClearSearch = onClearSearch,
                     onNewContactClick = onOpenCreateForm,
                     onNewGroupClick = onOpenNewGroupFlow,
-                    onContactClick = onOpenEditForm
+                    onContactClick = onOpenEditForm,
+                    onGroupClick = onOpenGroup
                 )
             }
         }
     }
 
-    if (uiState.isNewGroupVisible && uiState.isGroupContactPickerSheetOpen) {
+    if (
+        (uiState.isNewGroupVisible || uiState.isGroupDetailVisible) &&
+        uiState.isGroupContactPickerSheetOpen
+    ) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = onDismissGroupContactPickerSheet,
@@ -608,6 +660,269 @@ private fun GroupContactSelectionSheetContent(
 }
 
 @Composable
+private fun ContactGroupDetailScreenContent(
+    uiState: SignerManagementUiState,
+    onBack: () -> Unit,
+    onStartEditGroupName: () -> Unit,
+    onEditedGroupNameChanged: (String) -> Unit,
+    onSaveGroupName: () -> Unit,
+    onRemoveGroupMember: (String) -> Unit,
+    onStartAddGroupMembers: () -> Unit,
+    onCancelAddGroupMembers: () -> Unit,
+    onAddMembersToGroup: (Set<String>) -> Unit,
+    onDeleteGroup: () -> Unit
+) {
+    val group = uiState.contactGroups.firstOrNull {
+        it.id == uiState.openedGroupId
+    } ?: return
+
+    Scaffold(
+        containerColor = Color.White,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onBack)
+                        .padding(6.dp)
+                ) {
+                    ArrowLeftIcon(
+                        color = LetsSignColors.Primary,
+                        size = 22.dp
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Text(
+                    text = "Detalhes do grupo",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+            }
+        },
+        bottomBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .navigationBarsPadding()
+            ) {
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = LetsSignColors.Line
+                )
+
+                LetsSignSecondaryButton(
+                    text = "Excluir grupo",
+                    onClick = onDeleteGroup,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                )
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Nome do grupo",
+                style = MaterialTheme.typography.headlineSmall
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (uiState.isEditingGroupName) {
+                BasicTextField(
+                    value = uiState.editedGroupName,
+                    onValueChange = onEditedGroupNameChanged,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = LetsSignColors.Ink,
+                        fontSize = 17.sp
+                    ),
+                    cursorBrush = SolidColor(LetsSignColors.Primary),
+                    decorationBox = { innerTextField ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White)
+                                .border(
+                                    1.5.dp,
+                                    LetsSignColors.Primary,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                innerTextField()
+                            }
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LetsSignPrimaryButton(
+                    text = "Salvar nome",
+                    onClick = onSaveGroupName,
+                    enabled = uiState.editedGroupName.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = group.name,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            color = LetsSignColors.Ink,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Text(
+                        text = "Editar",
+                        color = LetsSignColors.Primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onStartEditGroupName)
+                            .padding(8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Membros",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Text(
+                    text = "${uiState.openedGroupMembers.size}",
+                    color = LetsSignColors.Muted,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (uiState.openedGroupMembers.isEmpty()) {
+                Text(
+                    text = "Este grupo ainda não possui membros.",
+                    color = LetsSignColors.Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                uiState.openedGroupMembers.forEachIndexed { index, member ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LetsSignAvatar(
+                            fullName = member.name,
+                            size = 44.dp
+                        )
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = member.name,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Text(
+                                text = member.email,
+                                color = LetsSignColors.Muted,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Text(
+                            text = "Remover",
+                            color = LetsSignColors.ErrorText,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    onRemoveGroupMember(member.id)
+                                }
+                                .padding(8.dp)
+                        )
+                    }
+
+                    if (index < uiState.openedGroupMembers.lastIndex) {
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = LetsSignColors.Line
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            LetsSignPrimaryButton(
+                text = "Adicionar membros",
+                onClick = onStartAddGroupMembers,
+                leadingIcon = {
+                    PlusIcon(
+                        color = Color.White,
+                        size = 18.dp
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (uiState.isAddingGroupMembers) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LetsSignSecondaryButton(
+                    text = "Cancelar adição",
+                    onClick = onCancelAddGroupMembers,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+@Composable
 private fun GroupCheckbox(
     checked: Boolean,
     onCheckedChange: () -> Unit
@@ -638,10 +953,17 @@ private fun ContactsListScreenContent(
     onClearSearch: () -> Unit,
     onNewContactClick: () -> Unit,
     onNewGroupClick: () -> Unit,
-    onContactClick: (User) -> Unit
+    onContactClick: (User) -> Unit,
+    onGroupClick: (String) -> Unit
 ) {
     val signers = uiState.filteredSigners
     val isSearching = uiState.searchQuery.isNotBlank()
+    val searchQuery = uiState.searchQuery.trim()
+
+    val groups = uiState.contactGroups.filter { group ->
+        searchQuery.isBlank() ||
+                group.name.contains(searchQuery, ignoreCase = true)
+    }
 
     Box(
         modifier = Modifier
@@ -683,7 +1005,7 @@ private fun ContactsListScreenContent(
                 }
             }
 
-            if (signers.isEmpty()) {
+            if (signers.isEmpty() && groups.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -775,26 +1097,131 @@ private fun ContactsListScreenContent(
                 ) {
                     item {
                         Text(
-                            text = countLabel,
+                            text = if (isSearching) {
+                                "${groups.size} grupos e ${signers.size} contatos encontrados"
+                            } else {
+                                "${groups.size} grupos e ${signers.size} contatos cadastrados"
+                            },
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = LetsSignColors.Muted,
                                 fontSize = 14.sp
                             )
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    itemsIndexed(items = signers, key = { _, item -> item.id }) { index, signer ->
-                        ContactListRow(
-                            signer = signer,
-                            highlightQuery = uiState.searchQuery.trim(),
-                            onClick = { onContactClick(signer) }
-                        )
-                        if (index < signers.lastIndex) {
+                    // Seção de grupos
+                    if (groups.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Grupos",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = LetsSignColors.Ink
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        items(
+                            items = groups,
+                            key = { group -> "group_${group.id}" }
+                        ) { group ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onGroupClick(group.id)
+                                    }
+                                    .padding(vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(CircleShape)
+                                        .background(LetsSignColors.VioletSoft),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "G",
+                                        color = LetsSignColors.Primary,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = group.name,
+                                        style = MaterialTheme.typography.headlineSmall.copy(
+                                            fontSize = 17.sp
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Text(
+                                        text = "Grupo de contatos",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = LetsSignColors.Muted
+                                        )
+                                    )
+                                }
+
+                                Text(
+                                    text = "›",
+                                    color = LetsSignColors.Muted,
+                                    style = MaterialTheme.typography.headlineMedium
+                                )
+                            }
+
                             HorizontalDivider(
                                 thickness = 1.dp,
                                 color = LetsSignColors.Line
                             )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+
+                    // Seção de contatos
+                    if (signers.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Contatos",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = LetsSignColors.Ink
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        itemsIndexed(
+                            items = signers,
+                            key = { _, signer -> "signer_${signer.id}" }
+                        ) { index, signer ->
+                            ContactListRow(
+                                signer = signer,
+                                highlightQuery = uiState.searchQuery.trim(),
+                                onClick = {
+                                    onContactClick(signer)
+                                }
+                            )
+
+                            if (index < signers.lastIndex) {
+                                HorizontalDivider(
+                                    thickness = 1.dp,
+                                    color = LetsSignColors.Line
+                                )
+                            }
                         }
                     }
                 }
