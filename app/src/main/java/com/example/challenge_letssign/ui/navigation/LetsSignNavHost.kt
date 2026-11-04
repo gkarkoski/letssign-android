@@ -31,7 +31,7 @@ object LetsSignRoutes {
     const val DOCUMENT_PREPARATION = "document_preparation/{adminId}?documentId={documentId}"
     const val PDF_POSITIONING = "pdf_positioning/{documentId}"
     const val DOCUMENT_REVIEW = "document_review/{documentId}"
-    const val DOCUMENT_DETAILS = "document_details/{documentId}"
+    const val DOCUMENT_DETAILS ="document_details/{documentId}?signerId={signerId}"
     const val SIGNER_DOCUMENT_SIGN = "signer_document_sign/{documentId}/{signerId}"
 
     fun adminDashboard(userId: String, userName: String): String =
@@ -55,6 +55,13 @@ object LetsSignRoutes {
 
     fun documentDetails(documentId: String): String =
         "document_details/${encodeSegment(documentId)}"
+
+    fun signerDocumentDetails(
+        documentId: String,
+        signerId: String
+    ): String =
+        "document_details/${encodeSegment(documentId)}" +
+                "?signerId=${encodeSegment(signerId)}"
 
     fun signerDocumentSign(documentId: String, signerId: String): String =
         "signer_document_sign/${encodeSegment(documentId)}/${encodeSegment(signerId)}"
@@ -150,9 +157,10 @@ fun LetsSignNavHost(
                     navController.navigate(LetsSignRoutes.documentDetails(documentId))
                 },
                 onSignDocumentClick = { documentId ->
-                    backStackEntry.savedStateHandle["select_signed_tab"] = false
+                    backStackEntry.savedStateHandle["select_signed_tab"] = true
+
                     navController.navigate(
-                        LetsSignRoutes.signerDocumentSign(
+                        LetsSignRoutes.signerDocumentDetails(
                             documentId = documentId,
                             signerId = userId
                         )
@@ -239,21 +247,48 @@ fun LetsSignNavHost(
         composable(
             route = LetsSignRoutes.DOCUMENT_DETAILS,
             arguments = listOf(
-                navArgument("documentId") { type = NavType.StringType }
+                navArgument("documentId") {
+                    type = NavType.StringType
+                },
+                navArgument("signerId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
             )
         ) { backStackEntry ->
-            val documentId = backStackEntry.arguments?.getString("documentId").orEmpty()
+
+            val documentId =
+                backStackEntry.arguments?.getString("documentId").orEmpty()
+
+            val signerId =
+                backStackEntry.arguments?.getString("signerId")
 
             DocumentDetailsScreen(
                 documentId = documentId,
+                signerId = signerId,
                 onBack = {
                     navController.popBackStack()
                 },
                 onEditDraftSignersAndFile = { docId ->
-                    navController.navigate(LetsSignRoutes.documentPreparation("admin", docId))
+                    navController.navigate(
+                        LetsSignRoutes.documentPreparation("admin", docId)
+                    )
                 },
                 onOpenPositioningOrViewPdf = { docId ->
-                    navController.navigate(LetsSignRoutes.pdfPositioning(docId))
+                    navController.navigate(
+                        LetsSignRoutes.pdfPositioning(docId)
+                    )
+                },
+                onSignDocument = { docId ->
+                    if (!signerId.isNullOrBlank()) {
+                        navController.navigate(
+                            LetsSignRoutes.signerDocumentSign(
+                                documentId = docId,
+                                signerId = signerId
+                            )
+                        )
+                    }
                 }
             )
         }
@@ -288,10 +323,21 @@ fun LetsSignNavHost(
                 },
                 onOpenDocumentForSigning = { docId ->
                     backStackEntry.savedStateHandle["select_signed_tab"] = false
-                    navController.navigate(LetsSignRoutes.signerDocumentSign(docId, userId))
+
+                    navController.navigate(
+                        LetsSignRoutes.signerDocumentDetails(
+                            documentId = docId,
+                            signerId = userId
+                        )
+                    )
                 },
                 onOpenSignedDocumentDetails = { docId ->
-                    navController.navigate(LetsSignRoutes.documentDetails(docId))
+                    navController.navigate(
+                        LetsSignRoutes.signerDocumentDetails(
+                            documentId = docId,
+                            signerId = userId
+                        )
+                    )
                 }
             )
         }
