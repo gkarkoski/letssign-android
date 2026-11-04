@@ -59,11 +59,17 @@ data class AdminDashboardUiState(
         get() = filterByQuery(partiallySignedDocuments, waitingOthersSearchQuery)
 
     val myPendingSignatures: List<AdminDocumentOverview>
-        get() = allDocuments.filter { it.isSentWaitingAll || it.isPartiallySigned }
+        get() = allDocuments.filter {
+            it.adminIsSigner &&
+                    (it.isSentWaitingAll || it.isPartiallySigned)
+        }
 
     val mySignedDocuments: List<AdminDocumentOverview>
-        get() = allDocuments.filter {it.adminSigned && it.isCompleted}
-
+        get() = allDocuments.filter {
+            it.adminIsSigner &&
+                    it.adminSigned &&
+                    it.isCompleted
+        }
     private fun filterByQuery(
         list: List<AdminDocumentOverview>,
         rawQuery: String

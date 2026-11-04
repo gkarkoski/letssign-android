@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.example.challenge_letssign.data.local.LetsSignDatabase
 import com.example.challenge_letssign.data.local.dao.DocumentDao
 import com.example.challenge_letssign.data.local.dao.SignatureFieldDao
 import com.example.challenge_letssign.data.local.dao.UserDao
@@ -45,7 +46,7 @@ object DatabaseSeeder {
     const val DOC_PROPOSTA_COMERCIAL_ID = "doc-0000-0000-0000-000000000003"
     const val DOC_TERMO_ADESAO_ID = "doc-0000-0000-0000-000000000004"
     const val DOC_AUTORIZACAO_IMAGEM_ID = "doc-0000-0000-0000-000000000005"
-
+    const val DOC_CONTRATO_NOVO_ID = "doc-0000-0000-0000-000000000006"
     const val SEED_PDF_FILE_NAME = "contrato-servicos.pdf"
 
     /**
@@ -59,7 +60,7 @@ object DatabaseSeeder {
     val initialUsers: List<UserEntity> = listOf(
         UserEntity(
             id = MOCK_ADMIN_ID,
-            name = "Administrador LetsSign",
+            name = "João Adi Min",
             email = "admin@exemplo.com.br",
             phone = "(11) 99999-0000",
             password = "123456",
@@ -227,6 +228,20 @@ object DatabaseSeeder {
             fileSizeBytes = 860_000L,
             ownerAdminId = MOCK_ADMIN_ID,
             inviteMessage = Document.DEFAULT_INVITE_MESSAGE
+        ),
+        DocumentEntity(
+            id = DOC_CONTRATO_NOVO_ID,
+            title = "Contrato de serviços",
+            fileName = seedFileNameFor(DOC_CONTRATO_NOVO_ID),
+            originalDisplayName = "contrato-novo.pdf",
+            status = DocumentStatus.PENDING,
+            createdAt = timestampOf(2026, 10, 28, 10, 32),
+            sentAt = timestampOf(2026, 10, 28, 10, 32),
+            deadlineAt = defaultDeadlineMillis,
+            pageCount = 6,
+            fileSizeBytes = 1_887_436L,
+            ownerAdminId = MOCK_ADMIN_ID,
+            inviteMessage = Document.DEFAULT_INVITE_MESSAGE
         )
     )
 
@@ -351,7 +366,7 @@ object DatabaseSeeder {
         ),
         DocumentSignerCrossRef(
             documentId = DOC_AUTORIZACAO_IMAGEM_ID,
-            signerId = MOCK_SIGNER_2_ID,
+            signerId = MOCK_ADMIN_ID,
             roleClass = SignerRoleClass.CONTRATADO,
             status = SignatureStatus.SIGNED,
             signedAt = timestampOf(2026, 10, 26, 11, 30),
@@ -360,6 +375,33 @@ object DatabaseSeeder {
         ),
         DocumentSignerCrossRef(
             documentId = DOC_AUTORIZACAO_IMAGEM_ID,
+            signerId = MOCK_SIGNER_3_ID,
+            roleClass = SignerRoleClass.TESTEMUNHA,
+            status = SignatureStatus.SIGNED,
+            signedAt = timestampOf(2026, 10, 26, 14, 10),
+            signatureIp = "192.168.1.103",
+            colorIndex = 2
+        ),
+
+        // 6. Contrato Novo (2/3 assinaturas - Concluído)
+        DocumentSignerCrossRef(
+            documentId = DOC_CONTRATO_NOVO_ID,
+            signerId = MOCK_ADMIN_ID,
+            roleClass = SignerRoleClass.CONTRATANTE,
+            status = SignatureStatus.PENDING,
+            colorIndex = 0
+        ),
+        DocumentSignerCrossRef(
+            documentId = DOC_CONTRATO_NOVO_ID,
+            signerId = MOCK_SIGNER_2_ID,
+            roleClass = SignerRoleClass.CONTRATADO,
+            status = SignatureStatus.SIGNED,
+            signedAt = timestampOf(2026, 10, 26, 11, 30),
+            signatureIp = "192.168.1.102",
+            colorIndex = 1
+        ),
+        DocumentSignerCrossRef(
+            documentId = DOC_CONTRATO_NOVO_ID,
             signerId = MOCK_SIGNER_3_ID,
             roleClass = SignerRoleClass.TESTEMUNHA,
             status = SignatureStatus.SIGNED,
@@ -486,12 +528,14 @@ object DatabaseSeeder {
     )
 
     suspend fun seedIfNeeded(
+        database: LetsSignDatabase,
         userDao: UserDao,
         documentDao: DocumentDao? = null,
         signatureFieldDao: SignatureFieldDao? = null,
         filesDir: File? = null,
         appContext: Context? = null
     ) {
+        database.clearAllTables()
         if (filesDir != null) {
             val seedPdf = ensureSeedPdfFileExists(filesDir)
             // Cria uma cópia independente do PDF modelo para cada documento pré-carregado.

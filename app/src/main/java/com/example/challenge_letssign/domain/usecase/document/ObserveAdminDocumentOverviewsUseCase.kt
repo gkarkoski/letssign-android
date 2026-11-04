@@ -17,7 +17,8 @@ data class AdminDocumentOverview(
     val totalSigners: Int,
     val signedCount: Int,
     val signerNames: List<String> = emptyList(),
-    val adminSigned: Boolean = false
+    val adminSigned: Boolean = false,
+    val adminIsSigner: Boolean = false
 ) {
     val isDraft: Boolean
         get() = document.status == DocumentStatus.DRAFT
@@ -61,12 +62,17 @@ class ObserveAdminDocumentOverviewsUseCase @Inject constructor(
                                         it.documentSigner.status == SignatureStatus.SIGNED
                             }
 
+                            val adminIsSigner = signers.any {
+                                it.documentSigner.signerId == adminId
+                            }
+
                             AdminDocumentOverview(
                                 document = doc,
                                 totalSigners = total,
                                 signedCount = signed,
                                 signerNames = names,
-                                adminSigned = adminSigned
+                                adminSigned = adminSigned,
+                                adminIsSigner = adminIsSigner
                             )
                         }
                     }
