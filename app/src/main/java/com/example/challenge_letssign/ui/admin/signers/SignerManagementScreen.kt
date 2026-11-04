@@ -77,7 +77,9 @@ import com.example.challenge_letssign.ui.components.ArrowLeftIcon
 import com.example.challenge_letssign.ui.components.CalendarIcon
 import com.example.challenge_letssign.ui.components.CheckIcon
 import com.example.challenge_letssign.ui.components.CloseIcon
+import com.example.challenge_letssign.ui.components.DeleteGroupConfirmDialog
 import com.example.challenge_letssign.ui.components.DeleteSignerConfirmDialog
+import com.example.challenge_letssign.ui.components.LetsSignDestructiveButton
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
 import com.example.challenge_letssign.ui.components.LetsSignErrorBanner
@@ -675,6 +677,18 @@ private fun ContactGroupDetailScreenContent(
     val group = uiState.contactGroups.firstOrNull {
         it.id == uiState.openedGroupId
     } ?: return
+    var isConfirmDeleteGroupOpen by remember { mutableStateOf(false) }
+
+    if (isConfirmDeleteGroupOpen) {
+        DeleteGroupConfirmDialog(
+            groupName = group.name,
+            onDismiss = { isConfirmDeleteGroupOpen = false },
+            onConfirmDelete = {
+                isConfirmDeleteGroupOpen = false
+                onDeleteGroup()
+            }
+        )
+    }
 
     Scaffold(
         containerColor = Color.White,
@@ -718,9 +732,10 @@ private fun ContactGroupDetailScreenContent(
                     color = LetsSignColors.Line
                 )
 
-                LetsSignSecondaryButton(
+                // Ação destrutiva em vermelho e com confirmação antes de excluir
+                LetsSignDestructiveButton(
                     text = "Excluir grupo",
-                    onClick = onDeleteGroup,
+                    onClick = { isConfirmDeleteGroupOpen = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 16.dp)

@@ -602,6 +602,9 @@ fun DocumentDetailsContent(
                                     (uiState.signedCount.toFloat() / uiState.totalSigners.toFloat()).coerceIn(0f, 1f)
                                 }
                                 LinearProgressIndicator(
+                                    // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                                    gapSize = 0.dp,
+                                    drawStopIndicator = {},
                                     progress = { if (isCompleted) 1f else progress },
                                     modifier = Modifier
                                         .fillMaxWidth()

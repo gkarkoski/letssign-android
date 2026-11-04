@@ -31,6 +31,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -116,6 +121,53 @@ fun LetsSignSecondaryButton(
             text = text,
             style = MaterialTheme.typography.labelLarge.copy(color = LetsSignColors.Primary)
         )
+    }
+}
+
+/**
+ * Botão para ações destrutivas (excluir, remover): contorno e texto vermelhos.
+ * Mesmo formato dos outros botões, mas a cor avisa que a ação não pode ser desfeita.
+ */
+@Composable
+fun LetsSignDestructiveButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    filled: Boolean = false
+) {
+    if (filled) {
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            shape = PillShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = LetsSignColors.Error,
+                contentColor = Color.White
+            ),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+            modifier = modifier.heightIn(min = 50.dp)
+        ) {
+            Text(text = text, style = MaterialTheme.typography.labelLarge)
+        }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            enabled = enabled,
+            shape = PillShape,
+            border = BorderStroke(1.25.dp, LetsSignColors.Error),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.White,
+                contentColor = LetsSignColors.ErrorText
+            ),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+            modifier = modifier.heightIn(min = 50.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(color = LetsSignColors.ErrorText)
+            )
+        }
     }
 }
 
@@ -298,7 +350,11 @@ fun LetsSignOtpInput(
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
     val sanitizedCode = code.filter { it.isDigit() }.take(6)
+    // Quadrado tocado pelo usuário para corrigir um dígito já preenchido (null = digitar no fim)
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    val editingIndex = selectedIndex?.takeIf { it < sanitizedCode.length }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -312,10 +368,32 @@ fun LetsSignOtpInput(
         Spacer(modifier = Modifier.height(10.dp))
 
         BasicTextField(
-            value = sanitizedCode,
-            onValueChange = { raw ->
-                val digits = raw.filter { it.isDigit() }.take(6)
-                onCodeChanged(digits)
+            // Cursor sempre no fim do texto; a edição de um quadrado específico é feita via editingIndex
+            value = TextFieldValue(sanitizedCode, selection = TextRange(sanitizedCode.length)),
+            onValueChange = { fieldValue ->
+                val rawDigits = fieldValue.text.filter { it.isDigit() }
+                val index = editingIndex
+                when {
+                    // Digitou com um quadrado selecionado: substitui só aquele dígito e avança
+                    index != null && rawDigits.length == sanitizedCode.length + 1 &&
+                        rawDigits.startsWith(sanitizedCode) -> {
+                        val newCode = sanitizedCode.substring(0, index) + rawDigits.last() +
+                            sanitizedCode.substring(index + 1)
+                        onCodeChanged(newCode)
+                        selectedIndex = (index + 1).takeIf { it < newCode.length }
+                    }
+                    // Apagou com um quadrado selecionado: remove só aquele dígito
+                    index != null && rawDigits.length == sanitizedCode.length - 1 &&
+                        sanitizedCode.startsWith(rawDigits) -> {
+                        val newCode = sanitizedCode.removeRange(index, index + 1)
+                        onCodeChanged(newCode)
+                        selectedIndex = index.takeIf { it < newCode.length }
+                    }
+                    else -> {
+                        onCodeChanged(rawDigits.take(6))
+                        selectedIndex = null
+                    }
+                }
             },
             singleLine = true,
             interactionSource = interactionSource,
@@ -337,10 +415,14 @@ fun LetsSignOtpInput(
                     val activeIndex = sanitizedCode.length.coerceAtMost(5)
                     for (index in 0 until 6) {
                         val char = sanitizedCode.getOrNull(index)?.toString().orEmpty()
-                        val isActiveBox = (isFocused || sanitizedCode.isNotEmpty()) &&
-                            index == activeIndex &&
-                            sanitizedCode.length < 6 &&
-                            !hasError
+                        val isActiveBox = if (editingIndex != null) {
+                            index == editingIndex && !hasError
+                        } else {
+                            (isFocused || sanitizedCode.isNotEmpty()) &&
+                                index == activeIndex &&
+                                sanitizedCode.length < 6 &&
+                                !hasError
+                        }
 
                         val borderColor = when {
                             hasError -> LetsSignColors.Error
@@ -356,7 +438,12 @@ fun LetsSignOtpInput(
                                 .clip(OtpBoxShape)
                                 .background(Color.White)
                                 .border(borderWidth, borderColor, OtpBoxShape)
-                                .clickable { focusRequester.requestFocus() },
+                                .clickable {
+                                    // Tocar num quadrado preenchido seleciona ele para correção
+                                    selectedIndex = index.takeIf { it < sanitizedCode.length }
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(

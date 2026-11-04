@@ -148,6 +148,7 @@ fun AdminDashboardContent(
                 LetsSignBottomNavTab.DOCUMENTS -> {
                     AdminDocumentsTabScreen(
                         uiState = uiState,
+                        adminName = adminName,
                         onSelectDocTab = onSelectDocTab,
                         onSearchQueryChanged = onSearchQueryChanged,
                         onClearSearch = onClearSearch,
@@ -259,6 +260,7 @@ private fun AdminCompactGradientHeader(
 @Composable
 private fun AdminDocumentsTabScreen(
     uiState: AdminDashboardUiState,
+    adminName: String = "",
     onSelectDocTab: (AdminDocumentTab) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
@@ -283,6 +285,10 @@ private fun AdminDocumentsTabScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             AdminCompactGradientHeader(
                 title = "Documentos",
+                subtitle = adminName.trim().substringBefore(" ")
+                    .takeIf { it.isNotBlank() && !it.equals("Administrador", ignoreCase = true) }
+                    ?.let { "Olá $it. Acompanhe os documentos que você enviou." }
+                    ?: "Acompanhe os documentos que você enviou para assinatura.",
                 onLogout = onLogout
             )
 
@@ -570,30 +576,72 @@ private fun AdminMySignaturesTabScreen(
             onSelectRight = { onSelectTab(MySignaturesTab.SIGNED) }
         )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 24.dp,
-                end = 24.dp,
-                top = 18.dp,
-                bottom = 32.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(items = docs, key = { "mysig_${it.document.id}" }) { overview ->
-                MySignatureDocumentCard(
-                    overview = overview,
-                    isPending = isPendingTab,
-                    onClick = {
-                        if (isPendingTab) {
-                            onPendingDocumentClick(overview.document.id)
-                        } else {
-                            onSignedDocumentClick(overview.document.id)
+        if (docs.isEmpty()) {
+            MySignaturesEmptyState(isPendingTab = isPendingTab)
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 24.dp,
+                    end = 24.dp,
+                    top = 18.dp,
+                    bottom = 32.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(items = docs, key = { "mysig_${it.document.id}" }) { overview ->
+                    MySignatureDocumentCard(
+                        overview = overview,
+                        isPending = isPendingTab,
+                        onClick = {
+                            if (isPendingTab) {
+                                onPendingDocumentClick(overview.document.id)
+                            } else {
+                                onSignedDocumentClick(overview.document.id)
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
+    }
+}
+
+/** Estado vazio de "Minhas Assinaturas" (mesmo padrão visual da Home do Signatário). */
+@Composable
+private fun MySignaturesEmptyState(isPendingTab: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(LetsSignColors.VioletSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            DocumentFileIcon(color = LetsSignColors.Primary, size = 32.dp)
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = if (isPendingTab) "Nenhum documento pendente" else "Você não tem nenhum documento vigente",
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = if (isPendingTab) {
+                "Quando alguém enviar um documento para você assinar, ele aparece aqui."
+            } else {
+                "Quando todos os signatários assinarem um documento, ele fica disponível aqui."
+            },
+            style = MaterialTheme.typography.bodyLarge.copy(color = LetsSignColors.Muted),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -794,6 +842,9 @@ private fun AdminDocumentCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             LinearProgressIndicator(
+                // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                gapSize = 0.dp,
+                drawStopIndicator = {},
                 progress = {
                     if (overview.isCompleted) 1f else overview.progressFraction
                 },
@@ -925,6 +976,9 @@ private fun MySignatureDocumentCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LinearProgressIndicator(
+                    // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                     progress = { overview.progressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -944,7 +998,7 @@ private fun MySignatureDocumentCard(
                         style = StatusChipStyle.COMPLETED
                     )
                     Text(
-                        text = "Assinado",
+                        text = "${overview.signedCount}/${overview.totalSigners} assinaturas",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Body,
                             fontSize = 14.sp

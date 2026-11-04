@@ -679,7 +679,12 @@ class SignerManagementViewModel @Inject constructor(
         val groupId = _uiState.value.openedGroupId ?: return
         viewModelScope.launch {
             when (val result = manageContactGroupUseCase.delete(groupId)) {
-                is AppResult.Success -> onCloseGroup()
+                is AppResult.Success -> {
+                    onCloseGroup()
+                    _uiState.update {
+                        it.copy(snackbarMessage = "Grupo excluído com sucesso.", isErrorSnackbar = false)
+                    }
+                }
                 is AppResult.Error -> _uiState.update {
                     it.copy(snackbarMessage = result.message, isErrorSnackbar = true)
                 }
