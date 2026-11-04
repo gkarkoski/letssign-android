@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -104,7 +107,11 @@ import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
 import com.example.challenge_letssign.utils.PdfCoordinateConverter
 import kotlinx.coroutines.delay
+import com.example.challenge_letssign.data.local.signature.SavedSignatureSet
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -119,9 +126,10 @@ fun SignerDocumentSignScreen(
 
     BackHandler(enabled = uiState.wizardStep != SignWizardStep.STEP_1_READ_DOCUMENT) {
         when (uiState.wizardStep) {
+            SignWizardStep.STEP_2_CHOOSE_SAVED,
             SignWizardStep.STEP_2_CAPTURE_SIGNATURE,
             SignWizardStep.STEP_2_CAPTURE_INITIALS -> viewModel.onDismissDrawingModal()
-            SignWizardStep.STEP_3_CONFIRM -> viewModel.onRedoFromConfirm()
+            SignWizardStep.STEP_3_CONFIRM -> viewModel.onCancelConfirm()
             SignWizardStep.FAILURE -> viewModel.onReturnToDocumentFromFailure()
             else -> onBack()
         }
@@ -155,6 +163,10 @@ fun SignerDocumentSignScreen(
         onTypedInitialsFontChanged = viewModel::onTypedInitialsFontChanged,
         onInitialsCapturedAdvanceToConfirm = viewModel::onInitialsCapturedAdvanceToConfirm,
         onRedoFromConfirm = viewModel::onRedoFromConfirm,
+        onCancelConfirm = viewModel::onCancelConfirm,
+        onUseSavedSignatureSet = viewModel::onUseSavedSignatureSet,
+        onStartNewSignature = viewModel::onStartNewSignature,
+        onSaveForFutureUseChanged = viewModel::onSaveForFutureUseChanged,
         onConfirmAndSaveSignature = viewModel::onConfirmAndSaveSignature,
         onRetrySaveAfterFailure = viewModel::onRetrySaveAfterFailure,
         onReturnToDocumentFromFailure = viewModel::onReturnToDocumentFromFailure
@@ -180,6 +192,10 @@ fun SignerDocumentSignContent(
     onTypedInitialsFontChanged: (CursiveFontStyle) -> Unit = {},
     onInitialsCapturedAdvanceToConfirm: (ByteArray) -> Unit = {},
     onRedoFromConfirm: () -> Unit = {},
+    onCancelConfirm: () -> Unit = {},
+    onUseSavedSignatureSet: (SavedSignatureSet) -> Unit = {},
+    onStartNewSignature: () -> Unit = {},
+    onSaveForFutureUseChanged: (Boolean) -> Unit = {},
     onConfirmAndSaveSignature: () -> Unit = {},
     onRetrySaveAfterFailure: () -> Unit = {},
     onReturnToDocumentFromFailure: () -> Unit = {},
@@ -272,78 +288,82 @@ fun SignerDocumentSignContent(
             ) {
                 HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
 
-                // Barra de informações da página e campos ("Página 2 de 6 · 2 campos seus: assinatura e rubrica")
-                Row(
+                // Navegação de páginas (centralizada) + resumo dos campos do signatário logo abaixo
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val canGoBack = uiState.totalPages > 1 && uiState.currentPageIndex > 0
+                    val canGoForward = uiState.totalPages > 1 && uiState.currentPageIndex < uiState.totalPages - 1
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        if (uiState.totalPages > 1 && uiState.currentPageIndex > 0) {
-                            Text(
-                                text = "‹",
-                                fontSize = 20.sp,
-                                color = LetsSignColors.Primary,
-                                modifier = Modifier.clickable { onSelectPage(uiState.currentPageIndex - 1) }
-                            )
-                        }
+                        Text(
+                            text = "‹",
+                            fontSize = 24.sp,
+                            color = if (canGoBack) LetsSignColors.Primary else LetsSignColors.Line,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable(enabled = canGoBack) { onSelectPage(uiState.currentPageIndex - 1) }
+                                .padding(horizontal = 14.dp, vertical = 2.dp)
+                        )
                         Text(
                             text = "Página ${uiState.currentPageIndex + 1} de ${uiState.totalPages}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
-                            modifier = Modifier.clickable(onClick = onFocusMyNextField)
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp)
                         )
-                        if (uiState.totalPages > 1 && uiState.currentPageIndex < uiState.totalPages - 1) {
-                            Text(
-                                text = "›",
-                                fontSize = 20.sp,
-                                color = LetsSignColors.Primary,
-                                modifier = Modifier.clickable { onSelectPage(uiState.currentPageIndex + 1) }
-                            )
-                        }
+                        Text(
+                            text = "›",
+                            fontSize = 24.sp,
+                            color = if (canGoForward) LetsSignColors.Primary else LetsSignColors.Line,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable(enabled = canGoForward) { onSelectPage(uiState.currentPageIndex + 1) }
+                                .padding(horizontal = 14.dp, vertical = 2.dp)
+                        )
                     }
-
                     Text(
                         text = uiState.footerFieldsDescription,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Muted,
-                            fontSize = 15.sp
-                        )
+                            fontSize = 13.sp
+                        ),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable(onClick = onFocusMyNextField)
                     )
                 }
 
                 HorizontalDivider(thickness = 1.dp, color = LetsSignColors.Line)
 
-                Row(
+                // Ação principal em largura total + "Depois" como link discreto (mesmo padrão das outras telas)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    LetsSignSecondaryButton(
-                        text = "Depois",
-                        onClick = onBack,
-                        modifier = Modifier.weight(0.42f)
-                    )
                     if (uiState.mySignatureStatus == SignatureStatus.PENDING) {
                         LetsSignPrimaryButton(
-                            text = "Assinar",
+                            text = if (uiState.hasSignatureReadyForThisDocument || uiState.hasSavedSignatures) {
+                                "Assinar"
+                            } else {
+                                "Cadastrar assinatura"
+                            },
                             onClick = onStartSignClick,
                             enabled = uiState.canSign,
-                            modifier = Modifier.weight(0.58f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     } else {
                         LetsSignPrimaryButton(
                             text = "Assinado",
                             onClick = onBack,
                             enabled = false,
-                            modifier = Modifier.weight(0.58f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    SignFlowSecondaryAction(text = "Depois", onClick = onBack)
                 }
             }
         }
@@ -404,7 +424,14 @@ fun SignerDocumentSignContent(
                                         field = field,
                                         viewWidthPx = viewW,
                                         viewHeightPx = viewH,
-                                        onClick = onStartSignClick
+                                        onClick = onStartSignClick,
+                                        previewBytes = if (!uiState.hasSignatureReadyForThisDocument) {
+                                            null
+                                        } else if (field.fieldType == SignatureFieldType.INITIALS) {
+                                            uiState.capturedInitialsBytes
+                                        } else {
+                                            uiState.capturedSignatureBytes
+                                        }
                                     )
                                 }
                             }
@@ -431,6 +458,24 @@ fun SignerDocumentSignContent(
                     )
                 }
             }
+        }
+    }
+
+    // Etapa 2 de 3: Escolher assinatura salva ou criar uma nova
+    if (uiState.wizardStep == SignWizardStep.STEP_2_CHOOSE_SAVED) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = onCancelCapture,
+            sheetState = sheetState,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+        ) {
+            ChooseSavedSignatureSheetContent(
+                savedSets = uiState.savedSignatureSets,
+                onUseSet = onUseSavedSignatureSet,
+                onNewSignature = onStartNewSignature,
+                onCancel = onCancelCapture
+            )
         }
     }
 
@@ -472,7 +517,7 @@ fun SignerDocumentSignContent(
                 subtitle = "As iniciais do seu nome. Usada nas páginas do documento.",
                 drawPlaceholder = "Desenhe sua rubrica aqui",
                 typeFieldLabel = "Suas iniciais",
-                confirmButtonLabel = "Usar rubrica",
+                confirmButtonLabel = "Concluir cadastro",
                 mode = uiState.initialsMode,
                 typedText = uiState.typedInitialsText,
                 selectedFont = uiState.typedInitialsFont,
@@ -480,7 +525,10 @@ fun SignerDocumentSignContent(
                 onTypedTextChanged = onTypedInitialsTextChanged,
                 onFontChanged = onTypedInitialsFontChanged,
                 onCancel = onCancelCapture,
-                onConfirmBytes = onInitialsCapturedAdvanceToConfirm
+                onConfirmBytes = onInitialsCapturedAdvanceToConfirm,
+                showSaveOption = true,
+                saveChecked = uiState.saveForFutureUse,
+                onSaveCheckedChange = onSaveForFutureUseChanged
             )
         }
     }
@@ -493,6 +541,7 @@ fun SignerDocumentSignContent(
             initialsBytes = uiState.capturedInitialsBytes,
             isSaving = uiState.isSubmittingSignature,
             onRedoClick = onRedoFromConfirm,
+            onDismiss = onCancelConfirm,
             onConfirmClick = onConfirmAndSaveSignature
         )
     }
@@ -503,9 +552,14 @@ private fun SignerTargetFieldOverlay(
     field: SignatureField,
     viewWidthPx: Float,
     viewHeightPx: Float,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    previewBytes: ByteArray? = null
 ) {
     val density = LocalDensity.current
+    // Prévia da assinatura/rubrica escolhida, posicionada no campo para o signatário revisar antes de assinar
+    val previewBitmap = remember(previewBytes) {
+        previewBytes?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() }
+    }
     val bounds = PdfCoordinateConverter.relativeToPixels(
         relativeX = field.relativeX,
         relativeY = field.relativeY,
@@ -548,7 +602,15 @@ private fun SignerTargetFieldOverlay(
             )
         }
 
-        Row(
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap.asImageBitmap(),
+                contentDescription = if (isInitials) "Prévia da rubrica" else "Prévia da assinatura",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
+            )
+        } else Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
             modifier = Modifier.padding(horizontal = 8.dp)
@@ -588,7 +650,10 @@ private fun SignatureOrInitialsCaptureSheetContent(
     onTypedTextChanged: (String) -> Unit,
     onFontChanged: (CursiveFontStyle) -> Unit,
     onCancel: () -> Unit,
-    onConfirmBytes: (ByteArray) -> Unit
+    onConfirmBytes: (ByteArray) -> Unit,
+    showSaveOption: Boolean = false,
+    saveChecked: Boolean = false,
+    onSaveCheckedChange: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val strokes = remember(title) { mutableStateListOf<List<Offset>>() }
@@ -819,17 +884,44 @@ private fun SignatureOrInitialsCaptureSheetContent(
             }
         }
 
+        if (showSaveOption) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LetsSignColors.Mist)
+                    .border(1.dp, LetsSignColors.Line, RoundedCornerShape(14.dp))
+                    .clickable { onSaveCheckedChange(!saveChecked) }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = saveChecked,
+                    onCheckedChange = onSaveCheckedChange,
+                    colors = CheckboxDefaults.colors(checkedColor = LetsSignColors.Primary)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Salvar assinatura e rubrica",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = "Disponíveis para reutilizar nos seus próximos documentos.",
+                        color = LetsSignColors.Muted,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(22.dp))
 
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LetsSignSecondaryButton(
-                text = "Cancelar",
-                onClick = onCancel,
-                modifier = Modifier.weight(0.42f)
-            )
             LetsSignPrimaryButton(
                 text = confirmButtonLabel,
                 onClick = {
@@ -850,9 +942,178 @@ private fun SignatureOrInitialsCaptureSheetContent(
                     onConfirmBytes(bytes)
                 },
                 enabled = canConfirm,
-                modifier = Modifier.weight(0.58f)
+                modifier = Modifier.fillMaxWidth()
             )
+            SignFlowSecondaryAction(text = "Cancelar", onClick = onCancel)
         }
+    }
+}
+
+/**
+ * Ação secundária (Depois / Cancelar / Voltar ao início) abaixo do botão principal:
+ * botão de contorno claro em largura total — discreto, mas claramente clicável.
+ */
+@Composable
+private fun SignFlowSecondaryAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Spacer(modifier = Modifier.height(10.dp))
+    LetsSignSecondaryButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 54.dp)
+    )
+}
+
+/** Link de texto discreto (usado só onde já existe um botão secundário acima). */
+@Composable
+private fun SignFlowTextLink(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        color = LetsSignColors.Primary,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = modifier
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    )
+}
+
+/**
+ * Etapa 2 de 3 (com assinaturas salvas): usar uma assinatura salva ou criar uma nova.
+ */
+@Composable
+private fun ChooseSavedSignatureSheetContent(
+    savedSets: List<SavedSignatureSet>,
+    onUseSet: (SavedSignatureSet) -> Unit,
+    onNewSignature: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.forLanguageTag("pt-BR")) }
+    // A mais recente já vem selecionada; o botão roxo principal usa a selecionada
+    var selectedId by remember(savedSets) { mutableStateOf(savedSets.firstOrNull()?.id) }
+    val selectedSet = savedSets.firstOrNull { it.id == selectedId }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, bottom = 28.dp)
+    ) {
+        Text(text = "Como deseja assinar?", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Use uma assinatura e rubrica salvas ou crie uma nova.",
+            style = MaterialTheme.typography.bodyMedium.copy(color = LetsSignColors.Muted, fontSize = 15.sp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        savedSets.forEach { set ->
+            val isSelected = set.id == selectedId
+            val sigBitmap = remember(set.id) {
+                runCatching { BitmapFactory.decodeByteArray(set.signaturePng, 0, set.signaturePng.size) }.getOrNull()
+            }
+            val initBitmap = remember(set.id) {
+                runCatching { BitmapFactory.decodeByteArray(set.initialsPng, 0, set.initialsPng.size) }.getOrNull()
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isSelected) LetsSignColors.Primary.copy(alpha = 0.06f) else Color.White)
+                    .border(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) LetsSignColors.Primary else LetsSignColors.Line,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .clickable { selectedId = set.id }
+                    .padding(start = 4.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = isSelected,
+                    onClick = { selectedId = set.id },
+                    colors = RadioButtonDefaults.colors(selectedColor = LetsSignColors.Primary)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(LetsSignColors.Mist),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            sigBitmap?.let {
+                                Image(
+                                    bitmap = it.asImageBitmap(),
+                                    contentDescription = "Assinatura salva",
+                                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(LetsSignColors.Mist),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            initBitmap?.let {
+                                Image(
+                                    bitmap = it.asImageBitmap(),
+                                    contentDescription = "Rubrica salva",
+                                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Salva em " + dateFormat.format(Date(set.savedAtMillis)),
+                        color = LetsSignColors.Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Roxo (principal) = usar a selecionada; contorno (secundário) = criar uma nova
+        LetsSignPrimaryButton(
+            text = "Usar assinatura selecionada",
+            onClick = { selectedSet?.let(onUseSet) },
+            enabled = selectedSet != null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        LetsSignSecondaryButton(
+            text = "Criar nova assinatura",
+            onClick = onNewSignature,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 54.dp)
+        )
+        SignFlowTextLink(
+            text = "Cancelar",
+            onClick = onCancel,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
     }
 }
 
@@ -866,7 +1127,8 @@ private fun ConfirmSignatureAndInitialsDialog(
     initialsBytes: ByteArray?,
     isSaving: Boolean,
     onRedoClick: () -> Unit,
-    onConfirmClick: () -> Unit
+    onConfirmClick: () -> Unit,
+    onDismiss: () -> Unit = onRedoClick
 ) {
     val sigBitmap = remember(signatureBytes) {
         signatureBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
@@ -875,7 +1137,7 @@ private fun ConfirmSignatureAndInitialsDialog(
         initialsBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
     }
 
-    Dialog(onDismissRequest = { if (!isSaving) onRedoClick() }) {
+    Dialog(onDismissRequest = { if (!isSaving) onDismiss() }) {
         Surface(
             shape = RoundedCornerShape(22.dp),
             color = Color.White,
@@ -887,12 +1149,12 @@ private fun ConfirmSignatureAndInitialsDialog(
                     .padding(horizontal = 24.dp, vertical = 24.dp)
             ) {
                 Text(
-                    text = "Confirmar assinatura e rubrica?",
+                    text = "Assinar o documento?",
                     style = MaterialTheme.typography.headlineMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Elas serão aplicadas ao $documentTitle e não poderão ser alteradas.",
+                    text = "Sua assinatura e rubrica serão aplicadas ao $documentTitle e não poderão ser alteradas.",
                     style = MaterialTheme.typography.bodyLarge.copy(
                         color = LetsSignColors.Muted,
                         fontSize = 15.sp
@@ -968,21 +1230,23 @@ private fun ConfirmSignatureAndInitialsDialog(
 
                 Spacer(modifier = Modifier.height(22.dp))
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    LetsSignSecondaryButton(
-                        text = if (isSaving) "Cancelar" else "Refazer",
-                        onClick = onRedoClick,
-                        enabled = !isSaving,
-                        modifier = Modifier.weight(0.42f)
-                    )
                     LetsSignPrimaryButton(
-                        text = if (isSaving) "Salvando..." else "Confirmar",
+                        text = if (isSaving) "Assinando..." else "Assinar documento",
                         onClick = onConfirmClick,
                         isLoading = isSaving,
-                        modifier = Modifier.weight(0.58f)
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    LetsSignSecondaryButton(
+                        text = "Trocar assinatura",
+                        onClick = onRedoClick,
+                        enabled = !isSaving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 54.dp)
                     )
                 }
             }
@@ -1024,8 +1288,7 @@ private fun SignCompletedSuccessScreenContent(
                         onClick = onViewSignedDocumentsClick,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LetsSignTextButton(
+                    SignFlowSecondaryAction(
                         text = "Voltar ao início",
                         onClick = onBackToHomeClick
                     )

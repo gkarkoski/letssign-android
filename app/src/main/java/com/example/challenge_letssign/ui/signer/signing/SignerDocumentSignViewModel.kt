@@ -2,6 +2,8 @@ package com.example.challenge_letssign.ui.signer.signing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.challenge_letssign.data.local.signature.SavedSignatureSet
+import com.example.challenge_letssign.data.local.signature.SavedSignatureStore
 import com.example.challenge_letssign.domain.model.Document
 import com.example.challenge_letssign.domain.model.SignatureField
 import com.example.challenge_letssign.domain.model.SignatureFieldType
@@ -14,17 +16,20 @@ import com.example.challenge_letssign.utils.AppResult
 import com.example.challenge_letssign.utils.PdfPageRenderer
 import com.example.challenge_letssign.utils.RenderedPdfPage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
 enum class SignWizardStep {
     STEP_1_READ_DOCUMENT,
+    STEP_2_CHOOSE_SAVED,
     STEP_2_CAPTURE_SIGNATURE,
     STEP_2_CAPTURE_INITIALS,
     STEP_3_CONFIRM,
@@ -63,6 +68,9 @@ data class SignerDocumentSignUiState(
     val typedInitialsFont: CursiveFontStyle = CursiveFontStyle.DANCING_SCRIPT,
     val capturedSignatureBytes: ByteArray? = null,
     val capturedInitialsBytes: ByteArray? = null,
+    // Banco de assinaturas salvas do signatário + opção "Salvar assinatura e rubrica" do cadastro
+    val savedSignatureSets: List<SavedSignatureSet> = emptyList(),
+    val saveForFutureUse: Boolean = false,
     val isSubmittingSignature: Boolean = false,
     val signedTimestampMillis: Long = System.currentTimeMillis(),
     val errorMessage: String? = null,
@@ -70,14 +78,21 @@ data class SignerDocumentSignUiState(
     val isErrorSnackbar: Boolean = false,
     val isSignedCompleted: Boolean = false
 ) {
+    /** Assinatura + rubrica já definidas para ESTE documento (cadastradas agora ou escolhidas das salvas). */
+    val hasSignatureReadyForThisDocument: Boolean
+        get() = capturedSignatureBytes != null && capturedInitialsBytes != null
+
+    val hasSavedSignatures: Boolean
+        get() = savedSignatureSets.isNotEmpty()
+
     val canSign: Boolean
         get() = mySignatureStatus == SignatureStatus.PENDING &&
-            myFields.isNotEmpty() &&
-            !isSubmittingSignature
+                myFields.isNotEmpty() &&
+                !isSubmittingSignature
 
     val isDrawingModalOpen: Boolean
         get() = wizardStep == SignWizardStep.STEP_2_CAPTURE_SIGNATURE ||
-            wizardStep == SignWizardStep.STEP_2_CAPTURE_INITIALS
+                wizardStep == SignWizardStep.STEP_2_CAPTURE_INITIALS
 
     val currentPageMyFields: List<SignatureField>
         get() = myFields.filter { it.pageNumber == currentPageIndex }
@@ -87,18 +102,25 @@ data class SignerDocumentSignUiState(
 
     val footerFieldsDescription: String
         get() {
-            val count = myFields.size
-            return when {
-                count <= 0 -> "Nenhum campo pendente"
-                count == 1 -> "1 campo seu: assinatura"
-                hasInitialsField -> "$count campos seus: assinatura e rubrica"
-                else -> "$count campos seus: assinatura"
+            if (myFields.isEmpty()) return "Nenhum campo para você neste documento"
+            val hasSignature = myFields.any { it.fieldType != SignatureFieldType.INITIALS }
+            val kinds = when {
+                hasSignature && hasInitialsField -> "assinatura e rubrica"
+                hasInitialsField -> "rubrica"
+                else -> "assinatura"
+            }
+            val pages = myFields.map { it.pageNumber }.distinct().sorted()
+            return if (pages.size == 1) {
+                "Você assina na página ${pages.first() + 1}: $kinds"
+            } else {
+                "Você assina em ${pages.size} páginas: $kinds"
             }
         }
 
     val topBarStepSubtitle: String
         get() = when (wizardStep) {
             SignWizardStep.STEP_1_READ_DOCUMENT -> "Etapa 1 de 3 · Leia o documento"
+            SignWizardStep.STEP_2_CHOOSE_SAVED -> "Etapa 2 de 3 · Escolha sua assinatura"
             SignWizardStep.STEP_2_CAPTURE_SIGNATURE -> "Etapa 2 de 3 · Sua assinatura"
             SignWizardStep.STEP_2_CAPTURE_INITIALS -> "Etapa 2 de 3 · Sua rubrica"
             SignWizardStep.STEP_3_CONFIRM,
@@ -112,7 +134,8 @@ class SignerDocumentSignViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
     private val pdfStorageRepository: PdfStorageRepository,
     private val pdfPageRenderer: PdfPageRenderer,
-    private val signDocumentUseCase: SignDocumentUseCase
+    private val signDocumentUseCase: SignDocumentUseCase,
+    private val savedSignatureStore: SavedSignatureStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SignerDocumentSignUiState())
@@ -129,9 +152,15 @@ class SignerDocumentSignViewModel @Inject constructor(
         _uiState.update { it.copy(signerId = signerId) }
 
         viewModelScope.launch {
+            val savedSets = withContext(Dispatchers.IO) { savedSignatureStore.list(signerId) }
+            _uiState.update { it.copy(savedSignatureSets = savedSets) }
+        }
+
+        viewModelScope.launch {
             val myFieldsRes = documentRepository.getSignatureFieldsBySigner(documentId, signerId)
             val initialFields = myFieldsRes.getOrNull().orEmpty()
-            val targetPage = initialFields.minOfOrNull { it.pageNumber } ?: 0
+            // O documento sempre abre na página 1 (o signatário lê desde o início).
+            val targetPage = 0
 
             _uiState.update {
                 it.copy(
@@ -229,14 +258,61 @@ class SignerDocumentSignViewModel @Inject constructor(
 
     // --- Etapa 1 -> Etapa 2 (Sua assinatura) ---
 
+    /**
+     * Botão principal da Etapa 1. Cadastrar/escolher a assinatura e ASSINAR são atos separados:
+     * - Assinatura já definida para este documento -> abre "Assinar o documento?" (toque intencional).
+     * - Existem assinaturas salvas -> abre a escolha: usar uma salva ou criar uma nova.
+     * - Nenhuma assinatura -> abre o cadastro (assinatura + rubrica).
+     */
     fun onOpenDrawingModal() {
-        if (!_uiState.value.canSign) return
+        val state = _uiState.value
+        if (!state.canSign) return
+        val nextStep = when {
+            state.hasSignatureReadyForThisDocument -> SignWizardStep.STEP_3_CONFIRM
+            state.hasSavedSignatures -> SignWizardStep.STEP_2_CHOOSE_SAVED
+            else -> SignWizardStep.STEP_2_CAPTURE_SIGNATURE
+        }
         _uiState.update {
             it.copy(
-                wizardStep = SignWizardStep.STEP_2_CAPTURE_SIGNATURE,
+                wizardStep = nextStep,
+                saveForFutureUse = if (nextStep == SignWizardStep.STEP_2_CAPTURE_SIGNATURE) false else it.saveForFutureUse,
                 errorMessage = null
             )
         }
+    }
+
+    /** Escolheu uma assinatura salva: define para este documento e volta para a revisão. */
+    fun onUseSavedSignatureSet(set: SavedSignatureSet) {
+        _uiState.update {
+            it.copy(
+                capturedSignatureBytes = set.signaturePng,
+                capturedInitialsBytes = set.initialsPng,
+                wizardStep = SignWizardStep.STEP_1_READ_DOCUMENT,
+                snackbarMessage = SIGNATURE_SELECTED_MESSAGE,
+                isErrorSnackbar = false
+            )
+        }
+    }
+
+    /** Preferiu criar uma nova assinatura (que também pode ser salva no fim do cadastro). */
+    fun onStartNewSignature() {
+        _uiState.update {
+            it.copy(
+                wizardStep = SignWizardStep.STEP_2_CAPTURE_SIGNATURE,
+                saveForFutureUse = false,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun onSaveForFutureUseChanged(save: Boolean) {
+        _uiState.update { it.copy(saveForFutureUse = save) }
+    }
+
+    /** Fecha a confirmação "Assinar o documento?" sem assinar. */
+    fun onCancelConfirm() {
+        if (_uiState.value.isSubmittingSignature) return
+        _uiState.update { it.copy(wizardStep = SignWizardStep.STEP_1_READ_DOCUMENT) }
     }
 
     fun onDismissDrawingModal() {
@@ -293,18 +369,47 @@ class SignerDocumentSignViewModel @Inject constructor(
      * guarda os bytes da rubrica e avança para "Confirmar assinatura e rubrica?" (Etapa 3 de 3).
      */
     fun onInitialsCapturedAdvanceToConfirm(initialsPngBytes: ByteArray) {
-        _uiState.update {
-            it.copy(
-                capturedInitialsBytes = initialsPngBytes,
-                wizardStep = SignWizardStep.STEP_3_CONFIRM
-            )
+        // Fim do CADASTRO: NÃO assina o documento. Salva no banco de assinaturas (se o usuário optou)
+        // e volta para o documento; a assinatura só acontece em "Assinar" -> "Assinar documento".
+        val state = _uiState.value
+        val signatureBytes = state.capturedSignatureBytes ?: return
+        viewModelScope.launch {
+            val newSet = if (state.saveForFutureUse) {
+                withContext(Dispatchers.IO) {
+                    savedSignatureStore.save(state.signerId, signatureBytes, initialsPngBytes)
+                }
+            } else {
+                null
+            }
+            _uiState.update {
+                it.copy(
+                    capturedInitialsBytes = initialsPngBytes,
+                    savedSignatureSets = if (newSet != null) {
+                        (listOf(newSet) + it.savedSignatureSets).take(SavedSignatureStore.MAX_SAVED_SETS)
+                    } else {
+                        it.savedSignatureSets
+                    },
+                    wizardStep = SignWizardStep.STEP_1_READ_DOCUMENT,
+                    snackbarMessage = SIGNATURE_READY_MESSAGE,
+                    isErrorSnackbar = false
+                )
+            }
         }
     }
 
+    /** "Trocar" na confirmação: volta para a escolha (se houver salvas) ou para um novo cadastro. */
     fun onRedoFromConfirm() {
-        if (_uiState.value.isSubmittingSignature) return
+        val state = _uiState.value
+        if (state.isSubmittingSignature) return
         _uiState.update {
-            it.copy(wizardStep = SignWizardStep.STEP_2_CAPTURE_SIGNATURE)
+            it.copy(
+                wizardStep = if (state.hasSavedSignatures) {
+                    SignWizardStep.STEP_2_CHOOSE_SAVED
+                } else {
+                    SignWizardStep.STEP_2_CAPTURE_SIGNATURE
+                },
+                saveForFutureUse = false
+            )
         }
     }
 
@@ -388,6 +493,11 @@ class SignerDocumentSignViewModel @Inject constructor(
                 errorMessage = null
             )
         }
+    }
+
+    companion object {
+        const val SIGNATURE_READY_MESSAGE = "Assinatura cadastrada! Revise o documento e toque em Assinar."
+        const val SIGNATURE_SELECTED_MESSAGE = "Assinatura selecionada! Revise o documento e toque em Assinar."
     }
 
     fun onDismissSnackbar() {

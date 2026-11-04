@@ -369,7 +369,7 @@ object DatabaseSeeder {
         )
     )
 
-    val initialSignatureFields: List<SignatureFieldEntity> = listOf(
+    private val baseSignatureFields: List<SignatureFieldEntity> = listOf(
         // Contrato de serviços (página 2 -> pageNumber = 1)
         SignatureFieldEntity(
             id = "seed-field-1",
@@ -485,6 +485,57 @@ object DatabaseSeeder {
         )
     )
 
+    /** Quantidade de páginas do PDF de exemplo gerado em [ensureSeedPdfFileExists]. */
+    const val SEED_PDF_PAGE_COUNT = 6
+
+    /**
+     * Todas as páginas do PDF de exemplo têm as linhas CONTRATANTE / CONTRATADO / TESTEMUNHA.
+     * Por isso cada campo de assinatura/rubrica dos documentos de exemplo é replicado em todas as
+     * páginas, na mesma posição — o documento fica assinado em todas as páginas, não só na 2.
+     */
+    /** Posição da rubrica de cada signatário (faixa inferior da página, lado a lado, sem sobrepor assinaturas). */
+    private fun initialsXFor(signerId: String): Float = when (signerId) {
+        MOCK_SIGNER_1_ID -> 0.08f
+        MOCK_SIGNER_3_ID -> 0.40f
+        else -> 0.72f
+    }
+
+    /**
+     * Todo signatário de um documento de exemplo também rubrica as páginas.
+     * Cria a rubrica para quem só tinha campo de assinatura (quem já tem rubrica mantém a sua).
+     */
+    private val missingInitialsFields: List<SignatureFieldEntity> = baseSignatureFields
+        .map { it.documentId to it.signerId }
+        .distinct()
+        .filter { (docId, signerId) ->
+            baseSignatureFields.none {
+                it.documentId == docId && it.signerId == signerId && it.fieldType == SignatureFieldType.INITIALS
+            }
+        }
+        .map { (docId, signerId) ->
+            SignatureFieldEntity(
+                id = "seed-rubrica-${docId.takeLast(4)}-${signerId.takeLast(4)}",
+                documentId = docId,
+                signerId = signerId,
+                pageNumber = 1,
+                relativeX = initialsXFor(signerId),
+                relativeY = 0.92f,
+                relativeWidth = 0.18f,
+                relativeHeight = 0.06f,
+                fieldType = SignatureFieldType.INITIALS
+            )
+        }
+
+    val initialSignatureFields: List<SignatureFieldEntity> = (baseSignatureFields + missingInitialsFields).flatMap { field ->
+        (0 until SEED_PDF_PAGE_COUNT).map { pageIndex ->
+            if (pageIndex == field.pageNumber) {
+                field
+            } else {
+                field.copy(id = "${field.id}-p${pageIndex + 1}", pageNumber = pageIndex)
+            }
+        }
+    }
+
     suspend fun seedIfNeeded(
         userDao: UserDao,
         documentDao: DocumentDao? = null,
@@ -566,7 +617,7 @@ object DatabaseSeeder {
         runCatching {
             PDDocument().use { document ->
                 val canUseStandardFonts = com.tom_roush.pdfbox.android.PDFBoxResourceLoader.isReady()
-                for (pageIndex in 0 until 6) {
+                for (pageIndex in 0 until SEED_PDF_PAGE_COUNT) {
                     val page = PDPage(PDRectangle.A4)
                     document.addPage(page)
                     PDPageContentStream(document, page).use { stream ->
