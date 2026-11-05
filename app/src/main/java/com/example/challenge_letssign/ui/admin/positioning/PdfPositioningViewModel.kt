@@ -8,6 +8,7 @@ import com.example.challenge_letssign.domain.model.DocumentSignerWithUser
 import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureField
 import com.example.challenge_letssign.domain.model.SignatureFieldType
+import com.example.challenge_letssign.domain.model.SignerRoleClass
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.repository.PdfStorageRepository
 import com.example.challenge_letssign.domain.usecase.document.DeleteSignatureFieldUseCase
@@ -378,50 +379,47 @@ class PdfPositioningViewModel @Inject constructor(
                 return@launch
             }
 
+            // Posiciona pelo PAPEL de cada signatário (antes era pela ordem da lista, o que colocava
+            // a assinatura na linha errada) e repete assinatura + rubrica em TODAS as páginas,
+            // seguindo o mesmo padrão dos documentos de exemplo.
             val totalPages = _uiState.value.totalPages.coerceAtLeast(1)
-            val mainPage = if (totalPages >= 2) 1 else 0
-            val lastPage = (totalPages - 1).coerceAtLeast(mainPage)
-
             val generatedSuggestions = mutableListOf<AiFieldSuggestionItem>()
-            currentSigners.forEachIndexed { idx, signerItem ->
-                val hint = when (idx) {
-                    0 -> "perto de \"CONTRATANTE\""
-                    1 -> "perto de \"CONTRATADO\""
-                    else -> "perto de \"TESTEMUNHA\""
+            currentSigners.forEach { signerItem ->
+                val role = signerItem.documentSigner.roleClass
+                val hint = "perto de \"${role.displayLabel.uppercase()}\""
+                val (sigX, sigY) = when (role) {
+                    SignerRoleClass.CONTRATANTE -> 0.08f to 0.68f
+                    SignerRoleClass.CONTRATADO -> 0.54f to 0.68f
+                    SignerRoleClass.TESTEMUNHA -> 0.31f to 0.82f
                 }
-                val relX = when (idx % 3) {
-                    0 -> 0.08f
-                    1 -> 0.54f
-                    else -> 0.31f
+                val initialsX = when (role) {
+                    SignerRoleClass.CONTRATANTE -> 0.08f
+                    SignerRoleClass.TESTEMUNHA -> 0.40f
+                    SignerRoleClass.CONTRATADO -> 0.72f
                 }
-                val relY = when (idx % 3) {
-                    0, 1 -> 0.68f
-                    else -> 0.82f
-                }
-                generatedSuggestions.add(
-                    AiFieldSuggestionItem(
-                        id = UUID.randomUUID().toString(),
-                        signerId = signerItem.signer.id,
-                        pageNumber = mainPage,
-                        relativeX = relX,
-                        relativeY = relY,
-                        fieldType = SignatureFieldType.SIGNATURE,
-                        contextHint = hint
-                    )
-                )
-                // Adiciona rubrica adicional no canto inferior direito das páginas para os 2 primeiros signatários (assinar_documento.png)
-                if (idx < 2 && totalPages > 1) {
+                for (page in 0 until totalPages) {
                     generatedSuggestions.add(
                         AiFieldSuggestionItem(
                             id = UUID.randomUUID().toString(),
                             signerId = signerItem.signer.id,
-                            pageNumber = if (idx == 0) lastPage else mainPage,
-                            relativeX = 0.72f,
-                            relativeY = 0.85f,
-                            relativeWidth = 0.20f,
-                            relativeHeight = 0.07f,
-                            fieldType = SignatureFieldType.INITIALS,
+                            pageNumber = page,
+                            relativeX = sigX,
+                            relativeY = sigY,
+                            fieldType = SignatureFieldType.SIGNATURE,
                             contextHint = hint
+                        )
+                    )
+                    generatedSuggestions.add(
+                        AiFieldSuggestionItem(
+                            id = UUID.randomUUID().toString(),
+                            signerId = signerItem.signer.id,
+                            pageNumber = page,
+                            relativeX = initialsX,
+                            relativeY = 0.92f,
+                            relativeWidth = 0.18f,
+                            relativeHeight = 0.06f,
+                            fieldType = SignatureFieldType.INITIALS,
+                            contextHint = "rubrica no rodapé"
                         )
                     )
                 }
@@ -510,8 +508,17 @@ class PdfPositioningViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            // Não duplica campos se o usuário aceitar as sugestões mais de uma vez
+            val existing = state.allFields
+            var failures = 0
             for (suggestion in suggestions) {
-                saveSignatureFieldUseCase(
+                val alreadyExists = existing.any {
+                    it.signerId == suggestion.signerId &&
+                        it.pageNumber == suggestion.pageNumber &&
+                        it.fieldType == suggestion.fieldType
+                }
+                if (alreadyExists) continue
+                val result = saveSignatureFieldUseCase(
                     documentId = doc.id,
                     signerId = suggestion.signerId,
                     pageNumber = suggestion.pageNumber,
@@ -523,12 +530,19 @@ class PdfPositioningViewModel @Inject constructor(
                     isAiSuggested = true,
                     aiContextHint = suggestion.contextHint
                 )
+                if (result is AppResult.Error) failures++
             }
             _uiState.update {
                 it.copy(
                     aiModalState = AiFieldsModalState.NONE,
                     aiSuggestedFields = emptyList(),
-                    reviewingAiFieldId = null
+                    reviewingAiFieldId = null,
+                    snackbarMessage = if (failures > 0) {
+                        "$failures campo(s) não puderam ser adicionados."
+                    } else {
+                        "Campos sugeridos pela IA adicionados."
+                    },
+                    isErrorSnackbar = failures > 0
                 )
             }
         }

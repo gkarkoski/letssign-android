@@ -128,6 +128,7 @@ enum class StatusChipStyle {
     WAITING,
     PARTIAL,
     COMPLETED,
+    INTERRUPTED,
     ROLE
 }
 
@@ -145,6 +146,7 @@ fun LetsSignStatusChip(
         StatusChipStyle.WAITING -> Triple(LetsSignColors.VioletSoft, LetsSignColors.VioletDeep, Color.Transparent)
         StatusChipStyle.PARTIAL -> Triple(Color.White, LetsSignColors.Primary, LetsSignColors.Primary)
         StatusChipStyle.COMPLETED -> Triple(LetsSignColors.SuccessSoft, LetsSignColors.Success, Color.Transparent)
+        StatusChipStyle.INTERRUPTED -> Triple(LetsSignColors.ErrorSoft, LetsSignColors.ErrorText, Color.Transparent)
         StatusChipStyle.ROLE -> Triple(Color.White, LetsSignColors.Ink, LetsSignColors.Line)
     }
 

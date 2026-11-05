@@ -68,6 +68,7 @@ data class AdminDashboardUiState(
         get() = allDocuments.filter {
             it.adminIsSigner &&
                     it.adminSigned &&
+                    it.document.status == com.example.challenge_letssign.domain.model.DocumentStatus.COMPLETED &&
                     it.isCompleted
         }
     private fun filterByQuery(
@@ -78,7 +79,7 @@ data class AdminDashboardUiState(
         if (q.isEmpty()) return list
         return list.filter { item ->
             item.document.title.lowercase().contains(q) ||
-                item.signerNames.any { name -> name.lowercase().contains(q) }
+                    item.signerNames.any { name -> name.lowercase().contains(q) }
         }
     }
 }

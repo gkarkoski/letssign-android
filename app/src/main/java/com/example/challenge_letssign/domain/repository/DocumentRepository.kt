@@ -20,6 +20,8 @@ interface DocumentRepository {
         sentAt: Long,
         inviteMessage: String
     ): AppResult<Unit>
+    suspend fun interruptDocument(documentId: String, userId: String, userName: String, interruptedAt: Long): AppResult<Unit>
+    suspend fun removeDocumentFromUserList(documentId: String, userId: String): AppResult<Unit>
     suspend fun deleteDocument(documentId: String): AppResult<Unit>
 
     // Document Signers (N:N Association)

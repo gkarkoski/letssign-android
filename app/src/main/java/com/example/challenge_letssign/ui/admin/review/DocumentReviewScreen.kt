@@ -417,6 +417,9 @@ fun DocumentReviewContent(
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                     LinearProgressIndicator(
+                        // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                        gapSize = 0.dp,
+                        drawStopIndicator = {},
                         progress = { 0.45f },
                         modifier = Modifier
                             .fillMaxWidth()

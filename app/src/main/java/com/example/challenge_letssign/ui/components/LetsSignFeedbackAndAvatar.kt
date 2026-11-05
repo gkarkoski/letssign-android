@@ -306,9 +306,63 @@ fun DeleteSignerConfirmDialog(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f)
                     )
-                    LetsSignPrimaryButton(
+                    LetsSignDestructiveButton(
                         text = "Excluir",
                         onClick = onConfirmDelete,
+                        filled = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Confirmação antes de excluir um grupo de signatários (ação destrutiva, botão vermelho).
+ */
+@Composable
+fun DeleteGroupConfirmDialog(
+    groupName: String,
+    onDismiss: () -> Unit,
+    onConfirmDelete: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = Color.White,
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = "Excluir grupo?",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "O grupo \"$groupName\" será excluído. Os contatos continuam cadastrados.",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = LetsSignColors.Muted
+                    )
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    LetsSignSecondaryButton(
+                        text = "Cancelar",
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    )
+                    LetsSignDestructiveButton(
+                        text = "Excluir",
+                        onClick = onConfirmDelete,
+                        filled = true,
                         modifier = Modifier.weight(1f)
                     )
                 }

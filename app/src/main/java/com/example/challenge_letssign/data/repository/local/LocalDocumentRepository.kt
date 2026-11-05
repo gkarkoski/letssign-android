@@ -84,6 +84,33 @@ class LocalDocumentRepository @Inject constructor(
         }
     }
 
+    override suspend fun interruptDocument(
+        documentId: String,
+        userId: String,
+        userName: String,
+        interruptedAt: Long
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao interromper documento.") {
+            documentDao.markDocumentInterrupted(documentId, userId, userName, interruptedAt)
+        }
+    }
+
+    override suspend fun removeDocumentFromUserList(
+        documentId: String,
+        userId: String
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        runCatchingResult("Erro ao remover documento da lista.") {
+            documentDao.hideDocumentForUser(documentId, userId)
+            val ownerId = documentDao.getDocumentOwnerId(documentId)
+            val participantIds = (listOfNotNull(ownerId) + documentDao.getDocumentSignerIds(documentId)).distinct()
+            val hiddenRaw = documentDao.getHiddenUserIdsRaw(documentId).orEmpty()
+            val hiddenIds = hiddenRaw.split("|").filter { it.isNotBlank() }.toSet()
+            if (participantIds.isNotEmpty() && participantIds.all { it in hiddenIds }) {
+                documentDao.deleteDocumentById(documentId)
+            }
+        }
+    }
+
     override suspend fun deleteDocument(documentId: String): AppResult<Unit> =
         withContext(ioDispatcher) {
             runCatchingResult("Erro ao excluir documento.") {

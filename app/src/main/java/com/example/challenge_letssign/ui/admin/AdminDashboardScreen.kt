@@ -63,8 +63,10 @@ import com.example.challenge_letssign.ui.components.PlusIcon
 import com.example.challenge_letssign.ui.components.SearchIcon
 import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.theme.Challenge_letsSignTheme
+import com.example.challenge_letssign.ui.profile.UserDisplayNameViewModel
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
+import kotlinx.coroutines.delay
 
 enum class AdminDocumentTab(val title: String) {
     SENT("Enviados"),
@@ -77,13 +79,21 @@ fun AdminDashboardScreen(
     adminId: String,
     adminName: String,
     openMySignedTabSignal: Boolean = false,
+    dashboardMessage: String? = null,
+    onDashboardMessageShown: () -> Unit = {},
     onLogout: () -> Unit,
     onNewDocumentClick: () -> Unit = {},
     onDocumentClick: (String) -> Unit = {},
     onSignDocumentClick: (String) -> Unit = onDocumentClick,
-    viewModel: AdminDashboardViewModel = hiltViewModel()
+    viewModel: AdminDashboardViewModel = hiltViewModel(),
+    nameViewModel: UserDisplayNameViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentName by nameViewModel.name.collectAsStateWithLifecycle()
+
+    LaunchedEffect(adminId) {
+        nameViewModel.refresh(adminId)
+    }
 
     LaunchedEffect(adminId) {
         viewModel.observeDocumentsForAdmin(adminId)
@@ -95,27 +105,49 @@ fun AdminDashboardScreen(
         }
     }
 
-    AdminDashboardContent(
-        adminId = adminId,
-        adminName = adminName,
-        uiState = uiState,
-        onSelectDocTab = viewModel::onSelectTab,
-        onSelectMySignaturesTab = viewModel::onSelectMySignaturesTab,
-        onSearchQueryChanged = viewModel::onSearchQueryChanged,
-        onClearSearch = viewModel::onClearSearch,
-        onWaitingOthersSearchQueryChanged = viewModel::onWaitingOthersSearchQueryChanged,
-        onRetryLoad = viewModel::onRetryLoad,
-        onNewDocumentClick = onNewDocumentClick,
-        onDocumentClick = onDocumentClick,
-        onSignDocumentClick = onSignDocumentClick,
-        onLogout = onLogout
-    )
+    LaunchedEffect(dashboardMessage) {
+        if (dashboardMessage != null) {
+            delay(3500)
+            onDashboardMessageShown()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AdminDashboardContent(
+            adminId = adminId,
+            adminName = currentName ?: adminName,
+            onBottomTabSelected = { nameViewModel.refresh(adminId) },
+            uiState = uiState,
+            onSelectDocTab = viewModel::onSelectTab,
+            onSelectMySignaturesTab = viewModel::onSelectMySignaturesTab,
+            onSearchQueryChanged = viewModel::onSearchQueryChanged,
+            onClearSearch = viewModel::onClearSearch,
+            onWaitingOthersSearchQueryChanged = viewModel::onWaitingOthersSearchQueryChanged,
+            onRetryLoad = viewModel::onRetryLoad,
+            onNewDocumentClick = onNewDocumentClick,
+            onDocumentClick = onDocumentClick,
+            onSignDocumentClick = onSignDocumentClick,
+            onLogout = onLogout
+        )
+
+        // Feedback de ações feitas em outras telas (ex.: documento excluído/removido)
+        if (dashboardMessage != null) {
+            LetsSignSnackbar(
+                message = dashboardMessage,
+                type = LetsSignSnackbarType.SUCCESS_DARK,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 24.dp, end = 24.dp, bottom = 120.dp)
+            )
+        }
+    }
 }
 
 @Composable
 fun AdminDashboardContent(
     adminId: String,
     adminName: String,
+    onBottomTabSelected: (LetsSignBottomNavTab) -> Unit = {},
     uiState: AdminDashboardUiState,
     onSelectDocTab: (AdminDocumentTab) -> Unit,
     onSelectMySignaturesTab: (MySignaturesTab) -> Unit = {},
@@ -135,7 +167,10 @@ fun AdminDashboardContent(
         bottomBar = {
             LetsSignBottomNavigationBar(
                 selectedTab = selectedBottomTab,
-                onTabSelected = { selectedBottomTab = it }
+                onTabSelected = {
+                    selectedBottomTab = it
+                    onBottomTabSelected(it)
+                }
             )
         }
     ) { innerPadding ->
@@ -148,6 +183,7 @@ fun AdminDashboardContent(
                 LetsSignBottomNavTab.DOCUMENTS -> {
                     AdminDocumentsTabScreen(
                         uiState = uiState,
+                        adminName = adminName,
                         onSelectDocTab = onSelectDocTab,
                         onSearchQueryChanged = onSearchQueryChanged,
                         onClearSearch = onClearSearch,
@@ -259,6 +295,7 @@ private fun AdminCompactGradientHeader(
 @Composable
 private fun AdminDocumentsTabScreen(
     uiState: AdminDashboardUiState,
+    adminName: String = "",
     onSelectDocTab: (AdminDocumentTab) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
@@ -270,8 +307,8 @@ private fun AdminDocumentsTabScreen(
     val tabDocs = uiState.visibleTabDocuments
     val draftDocs = uiState.draftDocuments
     val showDraftSection = uiState.selectedTab == AdminDocumentTab.SENT &&
-        uiState.searchQuery.isBlank() &&
-        draftDocs.isNotEmpty()
+            uiState.searchQuery.isBlank() &&
+            draftDocs.isNotEmpty()
     val isSearching = uiState.searchQuery.isNotBlank()
     val hasAnyDocsInCurrentTab = if (uiState.selectedTab == AdminDocumentTab.SENT) {
         uiState.allDocuments.any { it.isSentWaitingAll || it.isPartiallySigned || it.isDraft }
@@ -283,6 +320,10 @@ private fun AdminDocumentsTabScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             AdminCompactGradientHeader(
                 title = "Documentos",
+                subtitle = adminName.trim().substringBefore(" ")
+                    .takeIf { it.isNotBlank() && !it.equals("Administrador", ignoreCase = true) }
+                    ?.let { "Olá $it. Acompanhe os documentos que você enviou." }
+                    ?: "Acompanhe os documentos que você enviou para assinatura.",
                 onLogout = onLogout
             )
 
@@ -384,13 +425,21 @@ private fun AdminDocumentsTabScreen(
                         }
                         Spacer(modifier = Modifier.height(22.dp))
                         Text(
-                            text = "Nenhum documento enviado ainda",
+                            text = if (uiState.selectedTab == AdminDocumentTab.COMPLETED) {
+                                "Nenhum documento concluído"
+                            } else {
+                                "Nenhum documento enviado ainda"
+                            },
                             style = MaterialTheme.typography.headlineMedium,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Envie seu primeiro PDF para assinatura e acompanhe cada etapa por aqui.",
+                            text = if (uiState.selectedTab == AdminDocumentTab.COMPLETED) {
+                                "Quando todos os signatários assinarem um documento, ele aparece aqui."
+                            } else {
+                                "Envie seu primeiro PDF para assinatura e acompanhe cada etapa por aqui."
+                            },
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 color = LetsSignColors.Muted
                             ),
@@ -570,30 +619,72 @@ private fun AdminMySignaturesTabScreen(
             onSelectRight = { onSelectTab(MySignaturesTab.SIGNED) }
         )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 24.dp,
-                end = 24.dp,
-                top = 18.dp,
-                bottom = 32.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(items = docs, key = { "mysig_${it.document.id}" }) { overview ->
-                MySignatureDocumentCard(
-                    overview = overview,
-                    isPending = isPendingTab,
-                    onClick = {
-                        if (isPendingTab) {
-                            onPendingDocumentClick(overview.document.id)
-                        } else {
-                            onSignedDocumentClick(overview.document.id)
+        if (docs.isEmpty()) {
+            MySignaturesEmptyState(isPendingTab = isPendingTab)
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 24.dp,
+                    end = 24.dp,
+                    top = 18.dp,
+                    bottom = 32.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(items = docs, key = { "mysig_${it.document.id}" }) { overview ->
+                    MySignatureDocumentCard(
+                        overview = overview,
+                        isPending = isPendingTab,
+                        onClick = {
+                            if (isPendingTab) {
+                                onPendingDocumentClick(overview.document.id)
+                            } else {
+                                onSignedDocumentClick(overview.document.id)
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
+    }
+}
+
+/** Estado vazio de "Minhas Assinaturas" (mesmo padrão visual da Home do Signatário). */
+@Composable
+private fun MySignaturesEmptyState(isPendingTab: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(LetsSignColors.VioletSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            DocumentFileIcon(color = LetsSignColors.Primary, size = 32.dp)
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = if (isPendingTab) "Nenhum documento pendente" else "Você não tem nenhum documento vigente",
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = if (isPendingTab) {
+                "Quando alguém enviar um documento para você assinar, ele aparece aqui."
+            } else {
+                "Quando todos os signatários assinarem um documento, ele fica disponível aqui."
+            },
+            style = MaterialTheme.typography.bodyLarge.copy(color = LetsSignColors.Muted),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -711,6 +802,11 @@ private fun AdminDocumentCard(
             StatusChipStyle.DRAFT,
             LetsSignColors.VioletSoft
         )
+        doc.status == DocumentStatus.DELETED -> Triple(
+            "Interrompido",
+            StatusChipStyle.INTERRUPTED,
+            LetsSignColors.ErrorText
+        )
         overview.isCompleted -> Triple(
             "Concluído",
             StatusChipStyle.COMPLETED,
@@ -794,6 +890,9 @@ private fun AdminDocumentCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             LinearProgressIndicator(
+                // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                gapSize = 0.dp,
+                drawStopIndicator = {},
                 progress = {
                     if (overview.isCompleted) 1f else overview.progressFraction
                 },
@@ -925,6 +1024,9 @@ private fun MySignatureDocumentCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LinearProgressIndicator(
+                    // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                     progress = { overview.progressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -940,11 +1042,11 @@ private fun MySignatureDocumentCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LetsSignStatusChip(
-                        label = "Concluído",
-                        style = StatusChipStyle.COMPLETED
+                        label = if (doc.status == DocumentStatus.DELETED) "Interrompido" else "Concluído",
+                        style = if (doc.status == DocumentStatus.DELETED) StatusChipStyle.INTERRUPTED else StatusChipStyle.COMPLETED
                     )
                     Text(
-                        text = "Assinado",
+                        text = "${overview.signedCount}/${overview.totalSigners} assinaturas",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Body,
                             fontSize = 14.sp

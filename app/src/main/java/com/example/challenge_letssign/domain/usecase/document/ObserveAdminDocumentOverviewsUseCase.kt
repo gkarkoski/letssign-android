@@ -30,8 +30,8 @@ data class AdminDocumentOverview(
         get() = document.status == DocumentStatus.PENDING && signedCount > 0 && signedCount < totalSigners
 
     val isCompleted: Boolean
-        get() = document.status == DocumentStatus.COMPLETED ||
-            (document.status == DocumentStatus.PENDING && totalSigners > 0 && signedCount == totalSigners)
+        get() = document.status == DocumentStatus.COMPLETED || document.status == DocumentStatus.DELETED ||
+                (document.status == DocumentStatus.PENDING && totalSigners > 0 && signedCount == totalSigners)
 
     val progressFraction: Float
         get() = if (totalSigners <= 0) 0f else (signedCount.toFloat() / totalSigners.toFloat()).coerceIn(0f, 1f)

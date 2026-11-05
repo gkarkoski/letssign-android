@@ -53,6 +53,7 @@ import com.example.challenge_letssign.ui.components.LetsSignSkeletonCard
 import com.example.challenge_letssign.ui.components.LetsSignStatusChip
 import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.profile.LetsSignProfileScreen
+import com.example.challenge_letssign.ui.profile.UserDisplayNameViewModel
 import com.example.challenge_letssign.ui.theme.Challenge_letsSignTheme
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
@@ -65,9 +66,15 @@ fun SignerDashboardScreen(
     onLogout: () -> Unit,
     onOpenDocumentForSigning: (String) -> Unit = {},
     onOpenSignedDocumentDetails: (String) -> Unit = onOpenDocumentForSigning,
-    viewModel: SignerDashboardViewModel = hiltViewModel()
+    viewModel: SignerDashboardViewModel = hiltViewModel(),
+    nameViewModel: UserDisplayNameViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentName by nameViewModel.name.collectAsStateWithLifecycle()
+
+    LaunchedEffect(signerId) {
+        nameViewModel.refresh(signerId)
+    }
 
     LaunchedEffect(signerId) {
         viewModel.observeDocuments(signerId)
@@ -79,7 +86,8 @@ fun SignerDashboardScreen(
 
     SignerDashboardContent(
         signerId = signerId,
-        signerName = signerName,
+        signerName = currentName ?: signerName,
+        onBottomTabSelected = { nameViewModel.refresh(signerId) },
         uiState = uiState,
         onSelectTab = viewModel::onSelectTab,
         onRetryLoad = viewModel::onRetryLoad,
@@ -93,6 +101,7 @@ fun SignerDashboardScreen(
 fun SignerDashboardContent(
     signerId: String,
     signerName: String,
+    onBottomTabSelected: (LetsSignBottomNavTab) -> Unit = {},
     uiState: SignerDashboardUiState,
     onSelectTab: (SignerDocumentTab) -> Unit,
     onRetryLoad: () -> Unit = {},
@@ -109,7 +118,10 @@ fun SignerDashboardContent(
         bottomBar = {
             LetsSignBottomNavigationBar(
                 selectedTab = selectedBottomTab,
-                onTabSelected = { selectedBottomTab = it },
+                onTabSelected = {
+                    selectedBottomTab = it
+                    onBottomTabSelected(it)
+                },
                 tabs = LetsSignBottomNavTab.signerPrimaryTabs
             )
         }
@@ -263,7 +275,7 @@ fun SignerDashboardContent(
                                     text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
                                         "Nenhum documento pendente"
                                     } else {
-                                        "Nenhum documento assinado ainda"
+                                        "Você não tem nenhum documento vigente"
                                     },
                                     style = MaterialTheme.typography.headlineMedium,
                                     textAlign = TextAlign.Center
@@ -273,7 +285,7 @@ fun SignerDashboardContent(
                                     text = if (uiState.selectedTab == SignerDocumentTab.PENDING) {
                                         "Quando alguém enviar um documento para você assinar, ele aparece aqui."
                                     } else {
-                                        "Os documentos que você assinar ficarão disponíveis nesta aba."
+                                        "Quando todos os signatários assinarem um documento, ele fica disponível aqui."
                                     },
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = LetsSignColors.Muted
@@ -478,6 +490,9 @@ private fun SignerDocumentCard(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LinearProgressIndicator(
+                    // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
                     progress = { item.progressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -497,7 +512,7 @@ private fun SignerDocumentCard(
                         style = StatusChipStyle.COMPLETED
                     )
                     Text(
-                        text = "Assinado",
+                        text = "${item.signedCount}/${item.totalSigners} assinaturas",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Body,
                             fontSize = 14.sp

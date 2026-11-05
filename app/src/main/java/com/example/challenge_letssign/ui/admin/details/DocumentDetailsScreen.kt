@@ -47,9 +47,11 @@ import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.ui.components.CheckIcon
 import com.example.challenge_letssign.ui.components.ClockIcon
+import com.example.challenge_letssign.ui.components.ChevronRightIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
+import com.example.challenge_letssign.ui.components.LetsSignDestructiveButton
 import com.example.challenge_letssign.ui.components.LetsSignPrimaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSecondaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSkeletonCard
@@ -67,8 +69,10 @@ fun DocumentDetailsScreen(
     documentId: String,
     signerId: String? = null,
     onBack: () -> Unit,
+    onDeleted: (String) -> Unit = { onBack() },
     onEditDraftSignersAndFile: (String) -> Unit = {},
     onOpenPositioningOrViewPdf: (String) -> Unit,
+    onViewDocument: (String) -> Unit = onOpenPositioningOrViewPdf,
     onSignDocument: (String) -> Unit = {},
     viewModel: DocumentDetailsViewModel = hiltViewModel()
 ) {
@@ -80,7 +84,12 @@ fun DocumentDetailsScreen(
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) {
-            onBack()
+            // Feedback de sucesso exibido na Home depois de voltar
+            val wasCompleted = uiState.document?.status == DocumentStatus.COMPLETED
+            onDeleted(
+                if (wasCompleted || uiState.document?.status == DocumentStatus.DELETED) "Documento removido da sua lista."
+                else "Documento excluído com sucesso."
+            )
         }
     }
 
@@ -103,7 +112,12 @@ fun DocumentDetailsScreen(
             onEditDraftSignersAndFile(documentId)
         },
         onOpenPositioningOrViewPdf = {
-            onOpenPositioningOrViewPdf(documentId)
+            // Rascunho abre o posicionamento (edição); documento já enviado abre só a leitura
+            if (uiState.document?.status == DocumentStatus.DRAFT) {
+                onOpenPositioningOrViewPdf(documentId)
+            } else {
+                onViewDocument(documentId)
+            }
         },
         onSignDocument = {
             onSignDocument(documentId)
@@ -114,7 +128,7 @@ fun DocumentDetailsScreen(
         onDeleteDraft = viewModel::onRequestDeleteDocument,
         onRequestDeleteDocument = viewModel::onRequestDeleteDocument,
         onCancelDeleteDocument = viewModel::onCancelDeleteDocument,
-        onConfirmDeleteDocument = viewModel::onConfirmDeleteDocument,
+        onConfirmDeleteDocument = { viewModel.onConfirmDeleteDocument(signerId) },
         onDismissSnackbar = viewModel::onDismissSnackbar
     )
 }
@@ -139,8 +153,9 @@ fun DocumentDetailsContent(
     modifier: Modifier = Modifier
 ) {
     val doc = uiState.document
-    val isCompleted = doc?.status == DocumentStatus.COMPLETED ||
-        (uiState.totalSigners > 0 && uiState.signedCount == uiState.totalSigners)
+    val isInterrupted = doc?.status == DocumentStatus.DELETED
+    val isCompleted = doc?.status == DocumentStatus.COMPLETED || doc?.status == DocumentStatus.DELETED ||
+            (uiState.totalSigners > 0 && uiState.signedCount == uiState.totalSigners)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -175,8 +190,8 @@ fun DocumentDetailsContent(
                     )
                 }
 
-                // Botão de excluir/remover documento no topo também disponível
-                if (doc != null) {
+                // Excluir/remover é ação do Admin: o signatário não vê a lixeira
+                if (doc != null && (!isSignerView || isInterrupted || isCompleted || isMySignaturePending)) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -316,11 +331,14 @@ fun DocumentDetailsContent(
                                     ),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                LetsSignSecondaryButton(
-                                    text = uiState.reminderButtonLabel,
-                                    onClick = onResendReminder,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                // Lembrete é ação do Admin e só aparece se houver outro signatário pendente
+                                if (uiState.canSendReminder) {
+                                    LetsSignSecondaryButton(
+                                        text = uiState.reminderButtonLabel,
+                                        onClick = onResendReminder,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
 
                                 Box(
                                     modifier = Modifier
@@ -375,7 +393,7 @@ fun DocumentDetailsContent(
                                     ),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                if (!uiState.isDownloaded) {
+                                if (!uiState.isDownloaded && doc.status != DocumentStatus.DELETED) {
                                     LetsSignPrimaryButton(
                                         text = "Baixar documento assinado",
                                         onClick = onDownloadSignedDocument,
@@ -383,8 +401,23 @@ fun DocumentDetailsContent(
                                     )
                                 }
 
-                                // Mantenha aqui o bloco existente
-                                // de "Remover documento".
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(LetsSignColors.ErrorSoft)
+                                        .clickable(onClick = onRequestDeleteDocument),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Remover documento",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            color = LetsSignColors.ErrorText,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -505,6 +538,11 @@ fun DocumentDetailsContent(
                             StatusChipStyle.DRAFT,
                             LetsSignColors.VioletSoft
                         )
+                        doc.status == DocumentStatus.DELETED -> Triple(
+                            "Interrompido",
+                            StatusChipStyle.INTERRUPTED,
+                            LetsSignColors.ErrorText
+                        )
                         isCompleted -> Triple(
                             "Concluído",
                             StatusChipStyle.COMPLETED,
@@ -574,6 +612,15 @@ fun DocumentDetailsContent(
                                             )
                                         )
                                     }
+                                    // Indica que o card abre o documento para leitura
+                                    Text(
+                                        text = if (doc.status == DocumentStatus.DRAFT) "Editar" else "Ver",
+                                        color = LetsSignColors.Primary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    ChevronRightIcon(color = LetsSignColors.Primary, size = 18.dp)
                                 }
 
                                 Spacer(modifier = Modifier.height(18.dp))
@@ -602,6 +649,9 @@ fun DocumentDetailsContent(
                                     (uiState.signedCount.toFloat() / uiState.totalSigners.toFloat()).coerceIn(0f, 1f)
                                 }
                                 LinearProgressIndicator(
+                                    // Sem o "pontinho" e o espaço vazio que o Material 3 desenha por padrão no fim da barra
+                                    gapSize = 0.dp,
+                                    drawStopIndicator = {},
                                     progress = { if (isCompleted) 1f else progress },
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -688,8 +738,18 @@ fun DocumentDetailsContent(
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
                                     LetsSignStatusChip(
-                                        label = if (isSigned) "Assinou" else "Aguardando",
-                                        style = if (isSigned) StatusChipStyle.COMPLETED else StatusChipStyle.WAITING
+                                        label = when {
+                                            isSigned -> "Assinou"
+                                            doc.status == DocumentStatus.DELETED &&
+                                                    item.documentSigner.signerId == doc.deletedByUserId -> "Interrompido"
+                                            else -> "Aguardando"
+                                        },
+                                        style = when {
+                                            isSigned -> StatusChipStyle.COMPLETED
+                                            doc.status == DocumentStatus.DELETED &&
+                                                    item.documentSigner.signerId == doc.deletedByUserId -> StatusChipStyle.INTERRUPTED
+                                            else -> StatusChipStyle.WAITING
+                                        }
                                     )
                                 }
 
@@ -833,10 +893,32 @@ fun DocumentDetailsContent(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "O documento \"${doc.title}\" será removido da sua lista.",
+                        text = if (isCompleted) {
+                            "O documento \"${doc.title}\" continua válido juridicamente, mas será removido da sua lista."
+                        } else {
+                            "O processo de assinatura será interrompido e o documento \"${doc.title}\" será excluído para todos os signatários."
+                        },
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Muted
                         )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Aviso destacado: recomendação de download (concluído) ou alerta de ação irreversível
+                    Text(
+                        text = if (isCompleted) {
+                            "Recomendamos fortemente que você baixe o documento assinado antes de removê-lo."
+                        } else {
+                            "Esta ação não pode ser desfeita."
+                        },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.ErrorText,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LetsSignColors.ErrorSoft)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(
@@ -848,9 +930,10 @@ fun DocumentDetailsContent(
                             onClick = onCancelDeleteDocument,
                             modifier = Modifier.weight(1f)
                         )
-                        LetsSignPrimaryButton(
+                        LetsSignDestructiveButton(
                             text = actionWord,
                             onClick = onConfirmDeleteDocument,
+                            filled = true,
                             modifier = Modifier.weight(1f)
                         )
                     }

@@ -3,7 +3,8 @@ package com.example.challenge_letssign.domain.model
 enum class DocumentStatus {
     DRAFT,
     PENDING,
-    COMPLETED
+    COMPLETED,
+    DELETED
 }
 
 data class Document(
@@ -18,7 +19,11 @@ data class Document(
     val pageCount: Int = 1,
     val fileSizeBytes: Long = 0L,
     val deadlineAt: Long? = null,
-    val originalDisplayName: String = ""
+    val originalDisplayName: String = "",
+    val deletedByUserId: String? = null,
+    val deletedByUserName: String? = null,
+    val deletedAt: Long? = null,
+    val hiddenByUserIds: List<String> = emptyList()
 ) {
     val effectiveDisplayFileName: String
         get() = originalDisplayName.ifBlank {

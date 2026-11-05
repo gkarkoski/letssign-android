@@ -34,7 +34,11 @@ data class DocumentEntity(
     val pageCount: Int = 1,
     val fileSizeBytes: Long = 0L,
     val deadlineAt: Long? = null,
-    val originalDisplayName: String = ""
+    val originalDisplayName: String = "",
+    val deletedByUserId: String? = null,
+    val deletedByUserName: String? = null,
+    val deletedAt: Long? = null,
+    val hiddenByUserIds: List<String> = emptyList()
 )
 
 fun DocumentEntity.toDomain(): Document = Document(
@@ -49,7 +53,11 @@ fun DocumentEntity.toDomain(): Document = Document(
     pageCount = pageCount,
     fileSizeBytes = fileSizeBytes,
     deadlineAt = deadlineAt,
-    originalDisplayName = originalDisplayName
+    originalDisplayName = originalDisplayName,
+    deletedByUserId = deletedByUserId,
+    deletedByUserName = deletedByUserName,
+    deletedAt = deletedAt,
+    hiddenByUserIds = hiddenByUserIds
 )
 
 fun Document.toEntity(): DocumentEntity = DocumentEntity(
@@ -64,5 +72,9 @@ fun Document.toEntity(): DocumentEntity = DocumentEntity(
     pageCount = pageCount,
     fileSizeBytes = fileSizeBytes,
     deadlineAt = deadlineAt,
-    originalDisplayName = originalDisplayName
+    originalDisplayName = originalDisplayName,
+    deletedByUserId = deletedByUserId,
+    deletedByUserName = deletedByUserName,
+    deletedAt = deletedAt,
+    hiddenByUserIds = hiddenByUserIds
 )
