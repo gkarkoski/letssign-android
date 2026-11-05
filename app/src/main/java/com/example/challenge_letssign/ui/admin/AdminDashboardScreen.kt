@@ -113,22 +113,22 @@ fun AdminDashboardScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-    AdminDashboardContent(
-        adminId = adminId,
-        adminName = currentName ?: adminName,
-        onBottomTabSelected = { nameViewModel.refresh(adminId) },
-        uiState = uiState,
-        onSelectDocTab = viewModel::onSelectTab,
-        onSelectMySignaturesTab = viewModel::onSelectMySignaturesTab,
-        onSearchQueryChanged = viewModel::onSearchQueryChanged,
-        onClearSearch = viewModel::onClearSearch,
-        onWaitingOthersSearchQueryChanged = viewModel::onWaitingOthersSearchQueryChanged,
-        onRetryLoad = viewModel::onRetryLoad,
-        onNewDocumentClick = onNewDocumentClick,
-        onDocumentClick = onDocumentClick,
-        onSignDocumentClick = onSignDocumentClick,
-        onLogout = onLogout
-    )
+        AdminDashboardContent(
+            adminId = adminId,
+            adminName = currentName ?: adminName,
+            onBottomTabSelected = { nameViewModel.refresh(adminId) },
+            uiState = uiState,
+            onSelectDocTab = viewModel::onSelectTab,
+            onSelectMySignaturesTab = viewModel::onSelectMySignaturesTab,
+            onSearchQueryChanged = viewModel::onSearchQueryChanged,
+            onClearSearch = viewModel::onClearSearch,
+            onWaitingOthersSearchQueryChanged = viewModel::onWaitingOthersSearchQueryChanged,
+            onRetryLoad = viewModel::onRetryLoad,
+            onNewDocumentClick = onNewDocumentClick,
+            onDocumentClick = onDocumentClick,
+            onSignDocumentClick = onSignDocumentClick,
+            onLogout = onLogout
+        )
 
         // Feedback de ações feitas em outras telas (ex.: documento excluído/removido)
         if (dashboardMessage != null) {
@@ -307,8 +307,8 @@ private fun AdminDocumentsTabScreen(
     val tabDocs = uiState.visibleTabDocuments
     val draftDocs = uiState.draftDocuments
     val showDraftSection = uiState.selectedTab == AdminDocumentTab.SENT &&
-        uiState.searchQuery.isBlank() &&
-        draftDocs.isNotEmpty()
+            uiState.searchQuery.isBlank() &&
+            draftDocs.isNotEmpty()
     val isSearching = uiState.searchQuery.isNotBlank()
     val hasAnyDocsInCurrentTab = if (uiState.selectedTab == AdminDocumentTab.SENT) {
         uiState.allDocuments.any { it.isSentWaitingAll || it.isPartiallySigned || it.isDraft }
@@ -802,6 +802,11 @@ private fun AdminDocumentCard(
             StatusChipStyle.DRAFT,
             LetsSignColors.VioletSoft
         )
+        doc.status == DocumentStatus.DELETED -> Triple(
+            "Interrompido",
+            StatusChipStyle.INTERRUPTED,
+            LetsSignColors.ErrorText
+        )
         overview.isCompleted -> Triple(
             "Concluído",
             StatusChipStyle.COMPLETED,
@@ -1037,8 +1042,8 @@ private fun MySignatureDocumentCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LetsSignStatusChip(
-                        label = "Concluído",
-                        style = StatusChipStyle.COMPLETED
+                        label = if (doc.status == DocumentStatus.DELETED) "Interrompido" else "Concluído",
+                        style = if (doc.status == DocumentStatus.DELETED) StatusChipStyle.INTERRUPTED else StatusChipStyle.COMPLETED
                     )
                     Text(
                         text = "${overview.signedCount}/${overview.totalSigners} assinaturas",

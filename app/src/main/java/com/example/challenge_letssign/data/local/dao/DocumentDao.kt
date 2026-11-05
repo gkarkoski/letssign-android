@@ -16,14 +16,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface DocumentDao {
 
-    @Query("SELECT * FROM documents WHERE ownerAdminId = :adminId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM documents WHERE ownerAdminId = :adminId AND instr('|' || hiddenByUserIds || '|', '|' || :adminId || '|') = 0 ORDER BY createdAt DESC")
     fun observeDocumentsByAdmin(adminId: String): Flow<List<DocumentEntity>>
 
     @Query(
         """
         SELECT d.* FROM documents d
         INNER JOIN document_signer_cross_ref ref ON d.id = ref.documentId
-        WHERE ref.signerId = :signerId AND d.status != 'DRAFT'
+        WHERE ref.signerId = :signerId AND d.status != 'DRAFT' AND d.status != 'DELETED' AND instr('|' || d.hiddenByUserIds || '|', '|' || :signerId || '|') = 0
         ORDER BY d.createdAt DESC
         """
     )
@@ -60,6 +60,25 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents WHERE id = :documentId")
     suspend fun deleteDocumentById(documentId: String)
+
+
+    @Query("UPDATE documents SET status = 'DELETED', deletedByUserId = :userId, deletedByUserName = :userName, deletedAt = :deletedAt WHERE id = :documentId AND status = 'PENDING'")
+    suspend fun markDocumentInterrupted(documentId: String, userId: String, userName: String, deletedAt: Long)
+
+    @Query("UPDATE documents SET hiddenByUserIds = CASE WHEN hiddenByUserIds = '' THEN '|' || :userId || '|' ELSE hiddenByUserIds || :userId || '|' END WHERE id = :documentId AND instr('|' || hiddenByUserIds || '|', '|' || :userId || '|') = 0")
+    suspend fun hideDocumentForUser(documentId: String, userId: String)
+
+    @Query("SELECT ownerAdminId FROM documents WHERE id = :documentId LIMIT 1")
+    suspend fun getDocumentOwnerId(documentId: String): String?
+
+    @Query("SELECT signerId FROM document_signer_cross_ref WHERE documentId = :documentId")
+    suspend fun getDocumentSignerIds(documentId: String): List<String>
+
+    @Query("SELECT hiddenByUserIds FROM documents WHERE id = :documentId LIMIT 1")
+    suspend fun getHiddenUserIdsRaw(documentId: String): String?
+
+    @Query("SELECT COUNT(*) FROM documents WHERE id = :documentId")
+    suspend fun documentExists(documentId: String): Int
 
     // CrossRef Operations (N:N)
     @Transaction

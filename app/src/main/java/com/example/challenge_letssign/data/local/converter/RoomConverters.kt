@@ -14,6 +14,12 @@ import com.example.challenge_letssign.domain.model.UserRole
 class RoomConverters {
 
     @TypeConverter
+    fun fromStringList(values: List<String>): String = values.joinToString("|") { it.replace("|", "") }
+
+    @TypeConverter
+    fun toStringList(value: String): List<String> = value.split("|").filter { it.isNotBlank() }
+
+    @TypeConverter
     fun fromUserRole(role: UserRole): String = role.name
 
     @TypeConverter

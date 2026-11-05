@@ -24,7 +24,7 @@ import com.example.challenge_letssign.data.local.entity.ContactGroupMemberEntity
         ContactGroupEntity::class,
         ContactGroupMemberEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(RoomConverters::class)

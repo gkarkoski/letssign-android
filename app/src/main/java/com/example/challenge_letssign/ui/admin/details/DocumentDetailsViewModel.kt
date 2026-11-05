@@ -9,6 +9,7 @@ import com.example.challenge_letssign.domain.model.SignatureField
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.domain.repository.DocumentRepository
 import com.example.challenge_letssign.domain.repository.PdfStorageRepository
+import com.example.challenge_letssign.domain.repository.UserRepository
 import com.example.challenge_letssign.utils.DateTimeFormatters
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -94,6 +95,17 @@ data class DocumentDetailsUiState(
                 )
             )
 
+            if (doc.status == DocumentStatus.DELETED) {
+                steps.add(
+                    DocumentTimelineStep(
+                        title = "Processo interrompido",
+                        subtitle = "Por ${doc.deletedByUserName ?: "usuário"} · ${DateTimeFormatters.formatTimestampWithAs(doc.deletedAt ?: doc.createdAt)}",
+                        visualState = TimelineStepVisualState.COMPLETED_CHECK
+                    )
+                )
+                return steps
+            }
+
             val signedList = signers
                 .filter { it.documentSigner.status == SignatureStatus.SIGNED }
                 .sortedBy { it.documentSigner.signedAt ?: sentTime }
@@ -110,7 +122,7 @@ data class DocumentDetailsUiState(
             }
 
             val isDocCompleted = doc.status == DocumentStatus.COMPLETED ||
-                (totalSigners > 0 && signedCount == totalSigners)
+                    (totalSigners > 0 && signedCount == totalSigners)
 
             if (isDocCompleted) {
                 steps.add(
@@ -205,6 +217,17 @@ data class DocumentDetailsUiState(
                 )
             }
 
+            if (doc.status == DocumentStatus.DELETED) {
+                events.add(
+                    DocumentAuditEvent(
+                        timestampMillis = doc.deletedAt ?: doc.createdAt,
+                        title = "Processo interrompido",
+                        description = "Interrompido por ${doc.deletedByUserName ?: "usuário"} (${doc.deletedByUserId ?: "ID não disponível"}).",
+                        isSuccess = false
+                    )
+                )
+            }
+
             return events.sortedByDescending { it.timestampMillis }
         }
 }
@@ -212,7 +235,8 @@ data class DocumentDetailsUiState(
 @HiltViewModel
 class DocumentDetailsViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
-    private val pdfStorageRepository: PdfStorageRepository
+    private val pdfStorageRepository: PdfStorageRepository,
+    private val userRepository: UserRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentDetailsUiState())
@@ -331,19 +355,27 @@ class DocumentDetailsViewModel @Inject constructor(
         _uiState.update { it.copy(isConfirmDeleteDialogOpen = false) }
     }
 
-    fun onConfirmDeleteDocument() {
+    fun onConfirmDeleteDocument(actorUserId: String? = null) {
         val doc = _uiState.value.document ?: return
         viewModelScope.launch {
-            documentRepository.deleteDocument(doc.id)
-            if (doc.fileName != com.example.challenge_letssign.data.local.seed.DatabaseSeeder.SEED_PDF_FILE_NAME) {
-                pdfStorageRepository.deletePdfFile(doc.fileName)
+            val isCompleted = doc.status == DocumentStatus.COMPLETED
+            val actorId = actorUserId ?: doc.ownerAdminId
+            val actorName = userRepository.getUserById(actorId).let { result ->
+                (result as? com.example.challenge_letssign.utils.AppResult.Success)?.data?.name
+            } ?: _uiState.value.signers.firstOrNull { it.signer.id == actorId }?.signer?.name
+            ?: if (actorId == doc.ownerAdminId) "Administrador" else "Signatário"
+
+            if (isCompleted) {
+                documentRepository.removeDocumentFromUserList(doc.id, actorId)
+            } else if (doc.status == DocumentStatus.PENDING) {
+                documentRepository.interruptDocument(doc.id, actorId, actorName, System.currentTimeMillis())
+            } else {
+                documentRepository.deleteDocument(doc.id)
+                if (doc.fileName != com.example.challenge_letssign.data.local.seed.DatabaseSeeder.SEED_PDF_FILE_NAME) {
+                    pdfStorageRepository.deletePdfFile(doc.fileName)
+                }
             }
-            _uiState.update {
-                it.copy(
-                    isConfirmDeleteDialogOpen = false,
-                    isDeleted = true
-                )
-            }
+            _uiState.update { it.copy(isConfirmDeleteDialogOpen = false, isDeleted = true) }
         }
     }
 }
