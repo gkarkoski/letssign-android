@@ -63,6 +63,7 @@ import com.example.challenge_letssign.ui.components.PlusIcon
 import com.example.challenge_letssign.ui.components.SearchIcon
 import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.theme.Challenge_letsSignTheme
+import com.example.challenge_letssign.ui.profile.UserDisplayNameViewModel
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
 import kotlinx.coroutines.delay
@@ -84,9 +85,15 @@ fun AdminDashboardScreen(
     onNewDocumentClick: () -> Unit = {},
     onDocumentClick: (String) -> Unit = {},
     onSignDocumentClick: (String) -> Unit = onDocumentClick,
-    viewModel: AdminDashboardViewModel = hiltViewModel()
+    viewModel: AdminDashboardViewModel = hiltViewModel(),
+    nameViewModel: UserDisplayNameViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentName by nameViewModel.name.collectAsStateWithLifecycle()
+
+    LaunchedEffect(adminId) {
+        nameViewModel.refresh(adminId)
+    }
 
     LaunchedEffect(adminId) {
         viewModel.observeDocumentsForAdmin(adminId)
@@ -108,7 +115,8 @@ fun AdminDashboardScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     AdminDashboardContent(
         adminId = adminId,
-        adminName = adminName,
+        adminName = currentName ?: adminName,
+        onBottomTabSelected = { nameViewModel.refresh(adminId) },
         uiState = uiState,
         onSelectDocTab = viewModel::onSelectTab,
         onSelectMySignaturesTab = viewModel::onSelectMySignaturesTab,
@@ -139,6 +147,7 @@ fun AdminDashboardScreen(
 fun AdminDashboardContent(
     adminId: String,
     adminName: String,
+    onBottomTabSelected: (LetsSignBottomNavTab) -> Unit = {},
     uiState: AdminDashboardUiState,
     onSelectDocTab: (AdminDocumentTab) -> Unit,
     onSelectMySignaturesTab: (MySignaturesTab) -> Unit = {},
@@ -158,7 +167,10 @@ fun AdminDashboardContent(
         bottomBar = {
             LetsSignBottomNavigationBar(
                 selectedTab = selectedBottomTab,
-                onTabSelected = { selectedBottomTab = it }
+                onTabSelected = {
+                    selectedBottomTab = it
+                    onBottomTabSelected(it)
+                }
             )
         }
     ) { innerPadding ->

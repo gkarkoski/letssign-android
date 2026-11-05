@@ -63,9 +63,16 @@ data class DocumentDetailsUiState(
     val pendingSigners: List<DocumentSignerWithUser>
         get() = signers.filter { it.documentSigner.status == SignatureStatus.PENDING }
 
+    /** Signatários pendentes que podem receber lembrete (o próprio Admin dono do documento não entra). */
+    val reminderTargets: List<DocumentSignerWithUser>
+        get() = pendingSigners.filter { it.signer.id != document?.ownerAdminId }
+
+    val canSendReminder: Boolean
+        get() = reminderTargets.isNotEmpty()
+
     val reminderButtonLabel: String
-        get() = if (pendingSigners.size == 1) {
-            "Reenviar lembrete para ${pendingSigners.first().signer.name.substringBefore(" ")}"
+        get() = if (reminderTargets.size == 1) {
+            "Reenviar lembrete para ${reminderTargets.first().signer.name.substringBefore(" ")}"
         } else {
             "Reenviar lembrete"
         }
@@ -245,7 +252,8 @@ class DocumentDetailsViewModel @Inject constructor(
     }
 
     fun onResendReminder() {
-        val pending = _uiState.value.pendingSigners
+        val pending = _uiState.value.reminderTargets
+        if (pending.isEmpty()) return
         val msg = if (pending.size == 1) {
             "Lembrete enviado para ${pending.first().signer.name.substringBefore(" ")}."
         } else {

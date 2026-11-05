@@ -362,6 +362,8 @@ fun LetsSignNavHost(
                     )
                 },
                 onOpenSignedDocumentDetails = { docId ->
+                    // Ao voltar dos detalhes, a Home reabre na aba Vigentes (onde o usuário estava)
+                    backStackEntry.savedStateHandle["select_signed_tab"] = true
                     navController.navigate(
                         LetsSignRoutes.signerDocumentDetails(
                             documentId = docId,

@@ -188,8 +188,8 @@ fun DocumentDetailsContent(
                     )
                 }
 
-                // Botão de excluir/remover documento no topo também disponível
-                if (doc != null) {
+                // Excluir/remover é ação do Admin: o signatário não vê a lixeira
+                if (doc != null && !isSignerView) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -329,11 +329,14 @@ fun DocumentDetailsContent(
                                     ),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                LetsSignSecondaryButton(
-                                    text = uiState.reminderButtonLabel,
-                                    onClick = onResendReminder,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                // Lembrete é ação do Admin e só aparece se houver outro signatário pendente
+                                if (uiState.canSendReminder) {
+                                    LetsSignSecondaryButton(
+                                        text = uiState.reminderButtonLabel,
+                                        onClick = onResendReminder,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
 
                                 Box(
                                     modifier = Modifier
