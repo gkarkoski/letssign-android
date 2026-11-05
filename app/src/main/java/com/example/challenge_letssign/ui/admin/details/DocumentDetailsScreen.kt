@@ -190,8 +190,10 @@ fun DocumentDetailsContent(
                     )
                 }
 
-                // Excluir/remover é ação do Admin: o signatário não vê a lixeira
-                if (doc != null && (!isSignerView || isInterrupted || isCompleted || isMySignaturePending)) {
+                // Documentos pendentes podem ser interrompidos por qualquer signatário,
+                // mesmo que ele já tenha assinado. Documentos concluídos/interrompidos
+                // podem ser removidos da lista individual.
+                if (doc != null && (!isSignerView || doc.status == DocumentStatus.PENDING || isInterrupted || isCompleted)) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))

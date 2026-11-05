@@ -525,6 +525,41 @@ object DatabaseSeeder {
             relativeHeight = 0.08f,
             fieldType = SignatureFieldType.SIGNATURE
         )
+        ,
+        // Contrato Novo (documento inicial do João Admin): áreas para os três signatários.
+        SignatureFieldEntity(
+            id = "seed-field-11",
+            documentId = DOC_CONTRATO_NOVO_ID,
+            signerId = MOCK_ADMIN_ID,
+            pageNumber = 1,
+            relativeX = 0.08f,
+            relativeY = 0.68f,
+            relativeWidth = 0.36f,
+            relativeHeight = 0.08f,
+            fieldType = SignatureFieldType.SIGNATURE
+        ),
+        SignatureFieldEntity(
+            id = "seed-field-12",
+            documentId = DOC_CONTRATO_NOVO_ID,
+            signerId = MOCK_SIGNER_2_ID,
+            pageNumber = 1,
+            relativeX = 0.54f,
+            relativeY = 0.68f,
+            relativeWidth = 0.36f,
+            relativeHeight = 0.08f,
+            fieldType = SignatureFieldType.SIGNATURE
+        ),
+        SignatureFieldEntity(
+            id = "seed-field-13",
+            documentId = DOC_CONTRATO_NOVO_ID,
+            signerId = MOCK_SIGNER_3_ID,
+            pageNumber = 1,
+            relativeX = 0.31f,
+            relativeY = 0.82f,
+            relativeWidth = 0.36f,
+            relativeHeight = 0.08f,
+            fieldType = SignatureFieldType.SIGNATURE
+        )
     )
 
     /** Quantidade de páginas do PDF de exemplo gerado em [ensureSeedPdfFileExists]. */
