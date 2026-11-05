@@ -140,11 +140,18 @@ fun LetsSignNavHost(
             val openSignedTab by backStackEntry.savedStateHandle
                 .getStateFlow("select_signed_tab", false)
                 .collectAsStateWithLifecycle()
+            val dashboardMessage by backStackEntry.savedStateHandle
+                .getStateFlow<String?>("dashboard_message", null)
+                .collectAsStateWithLifecycle()
 
             AdminDashboardScreen(
                 adminId = userId,
                 adminName = userName,
                 openMySignedTabSignal = openSignedTab,
+                dashboardMessage = dashboardMessage,
+                onDashboardMessageShown = {
+                    backStackEntry.savedStateHandle["dashboard_message"] = null
+                },
                 onLogout = {
                     navController.navigate(LetsSignRoutes.LOGIN) {
                         popUpTo(0) { inclusive = true }
@@ -268,6 +275,10 @@ fun LetsSignNavHost(
                 documentId = documentId,
                 signerId = signerId,
                 onBack = {
+                    navController.popBackStack()
+                },
+                onDeleted = { message ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set("dashboard_message", message)
                     navController.popBackStack()
                 },
                 onEditDraftSignersAndFile = { docId ->

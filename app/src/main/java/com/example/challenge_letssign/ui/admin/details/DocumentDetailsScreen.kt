@@ -50,6 +50,7 @@ import com.example.challenge_letssign.ui.components.ClockIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
+import com.example.challenge_letssign.ui.components.LetsSignDestructiveButton
 import com.example.challenge_letssign.ui.components.LetsSignPrimaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSecondaryButton
 import com.example.challenge_letssign.ui.components.LetsSignSkeletonCard
@@ -67,6 +68,7 @@ fun DocumentDetailsScreen(
     documentId: String,
     signerId: String? = null,
     onBack: () -> Unit,
+    onDeleted: (String) -> Unit = { onBack() },
     onEditDraftSignersAndFile: (String) -> Unit = {},
     onOpenPositioningOrViewPdf: (String) -> Unit,
     onSignDocument: (String) -> Unit = {},
@@ -80,7 +82,11 @@ fun DocumentDetailsScreen(
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) {
-            onBack()
+            // Feedback de sucesso exibido na Home depois de voltar
+            val wasCompleted = uiState.document?.status == DocumentStatus.COMPLETED
+            onDeleted(
+                if (wasCompleted) "Documento removido da sua lista." else "Documento excluído com sucesso."
+            )
         }
     }
 
@@ -836,10 +842,32 @@ fun DocumentDetailsContent(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "O documento \"${doc.title}\" será removido da sua lista.",
+                        text = if (isCompleted) {
+                            "O documento \"${doc.title}\" continua válido juridicamente, mas será removido da sua lista."
+                        } else {
+                            "O processo de assinatura será interrompido e o documento \"${doc.title}\" será excluído para todos os signatários."
+                        },
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = LetsSignColors.Muted
                         )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Aviso destacado: recomendação de download (concluído) ou alerta de ação irreversível
+                    Text(
+                        text = if (isCompleted) {
+                            "Recomendamos fortemente que você baixe o documento assinado antes de removê-lo."
+                        } else {
+                            "Esta ação não pode ser desfeita."
+                        },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = LetsSignColors.ErrorText,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LetsSignColors.ErrorSoft)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(
@@ -851,9 +879,10 @@ fun DocumentDetailsContent(
                             onClick = onCancelDeleteDocument,
                             modifier = Modifier.weight(1f)
                         )
-                        LetsSignPrimaryButton(
+                        LetsSignDestructiveButton(
                             text = actionWord,
                             onClick = onConfirmDeleteDocument,
+                            filled = true,
                             modifier = Modifier.weight(1f)
                         )
                     }

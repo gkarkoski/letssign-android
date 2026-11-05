@@ -65,6 +65,7 @@ import com.example.challenge_letssign.ui.components.StatusChipStyle
 import com.example.challenge_letssign.ui.theme.Challenge_letsSignTheme
 import com.example.challenge_letssign.ui.theme.LetsSignColors
 import com.example.challenge_letssign.utils.DateTimeFormatters
+import kotlinx.coroutines.delay
 
 enum class AdminDocumentTab(val title: String) {
     SENT("Enviados"),
@@ -77,6 +78,8 @@ fun AdminDashboardScreen(
     adminId: String,
     adminName: String,
     openMySignedTabSignal: Boolean = false,
+    dashboardMessage: String? = null,
+    onDashboardMessageShown: () -> Unit = {},
     onLogout: () -> Unit,
     onNewDocumentClick: () -> Unit = {},
     onDocumentClick: (String) -> Unit = {},
@@ -95,6 +98,14 @@ fun AdminDashboardScreen(
         }
     }
 
+    LaunchedEffect(dashboardMessage) {
+        if (dashboardMessage != null) {
+            delay(3500)
+            onDashboardMessageShown()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     AdminDashboardContent(
         adminId = adminId,
         adminName = adminName,
@@ -110,6 +121,18 @@ fun AdminDashboardScreen(
         onSignDocumentClick = onSignDocumentClick,
         onLogout = onLogout
     )
+
+        // Feedback de ações feitas em outras telas (ex.: documento excluído/removido)
+        if (dashboardMessage != null) {
+            LetsSignSnackbar(
+                message = dashboardMessage,
+                type = LetsSignSnackbarType.SUCCESS_DARK,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 24.dp, end = 24.dp, bottom = 120.dp)
+            )
+        }
+    }
 }
 
 @Composable
@@ -390,13 +413,21 @@ private fun AdminDocumentsTabScreen(
                         }
                         Spacer(modifier = Modifier.height(22.dp))
                         Text(
-                            text = "Nenhum documento enviado ainda",
+                            text = if (uiState.selectedTab == AdminDocumentTab.COMPLETED) {
+                                "Nenhum documento concluído"
+                            } else {
+                                "Nenhum documento enviado ainda"
+                            },
                             style = MaterialTheme.typography.headlineMedium,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Envie seu primeiro PDF para assinatura e acompanhe cada etapa por aqui.",
+                            text = if (uiState.selectedTab == AdminDocumentTab.COMPLETED) {
+                                "Quando todos os signatários assinarem um documento, ele aparece aqui."
+                            } else {
+                                "Envie seu primeiro PDF para assinatura e acompanhe cada etapa por aqui."
+                            },
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 color = LetsSignColors.Muted
                             ),
