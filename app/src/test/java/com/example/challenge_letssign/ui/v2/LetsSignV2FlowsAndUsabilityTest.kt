@@ -194,6 +194,9 @@ class LetsSignV2FlowsAndUsabilityTest {
             Document("doc-pending-me", "Contrato de serviços", "c1.pdf", DocumentStatus.PENDING, 1000L, "admin-1")
         )
         fakeDocRepo.assignSignerToDocument(
+            DocumentSigner("doc-pending-me", "admin-1", SignerRoleClass.CONTRATANTE, SignatureStatus.PENDING)
+        )
+        fakeDocRepo.assignSignerToDocument(
             DocumentSigner("doc-pending-me", "s-rafael", SignerRoleClass.CONTRATADO, SignatureStatus.PENDING)
         )
         fakeDocRepo.assignSignerToDocument(
@@ -205,15 +208,21 @@ class LetsSignV2FlowsAndUsabilityTest {
             Document("doc-waiting-others", "Aditivo contratual", "c2.pdf", DocumentStatus.PENDING, 2000L, "admin-1")
         )
         fakeDocRepo.assignSignerToDocument(
+            DocumentSigner("doc-waiting-others", "admin-1", SignerRoleClass.CONTRATANTE, SignatureStatus.SIGNED, 2400L, "10.0.0.0")
+        )
+        fakeDocRepo.assignSignerToDocument(
             DocumentSigner("doc-waiting-others", "s-rafael", SignerRoleClass.CONTRATADO, SignatureStatus.SIGNED, 2500L, "10.0.0.1")
         )
         fakeDocRepo.assignSignerToDocument(
             DocumentSigner("doc-waiting-others", "s-beatriz", SignerRoleClass.TESTEMUNHA, SignatureStatus.PENDING)
         )
 
-        // Doc 3: Fully completed (2/2 signed, DocumentStatus.COMPLETED)
+        // Doc 3: Fully completed (3/3 signed, DocumentStatus.COMPLETED)
         fakeDocRepo.createDocument(
             Document("doc-completed", "Termo de adesão", "c3.pdf", DocumentStatus.COMPLETED, 3000L, "admin-1")
+        )
+        fakeDocRepo.assignSignerToDocument(
+            DocumentSigner("doc-completed", "admin-1", SignerRoleClass.CONTRATANTE, SignatureStatus.SIGNED, 3050L, "10.0.0.0")
         )
         fakeDocRepo.assignSignerToDocument(
             DocumentSigner("doc-completed", "s-rafael", SignerRoleClass.CONTRATADO, SignatureStatus.SIGNED, 3100L, "10.0.0.1")
@@ -231,9 +240,9 @@ class LetsSignV2FlowsAndUsabilityTest {
         assertTrue(signerState.pendingDocuments.any { it.document.id == "doc-pending-me" && it.isPendingForMe })
         assertTrue(signerState.pendingDocuments.any { it.document.id == "doc-waiting-others" && it.isSignedByMe })
 
-        // Switch to Assinados tab
+        // Switch to Vigentes (SIGNED) tab -> only fully COMPLETED documents appear here
         signerVm.onSelectTab(SignerDocumentTab.SIGNED)
-        assertEquals(2, signerVm.uiState.value.visibleDocuments.size)
+        assertEquals(1, signerVm.uiState.value.visibleDocuments.size)
 
         // Verify AdminDashboardViewModel MySignatures Pendentes also includes both Sent and Partially Signed
         val adminVm = AdminDashboardViewModel(ObserveAdminDocumentOverviewsUseCase(fakeDocRepo))

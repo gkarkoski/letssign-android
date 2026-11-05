@@ -239,6 +239,26 @@ class DocumentDetailsViewModel @Inject constructor(
     private val userRepository: UserRepository
 ) : ViewModel() {
 
+    constructor(
+        documentRepository: DocumentRepository,
+        pdfStorageRepository: PdfStorageRepository
+    ) : this(
+        documentRepository = documentRepository,
+        pdfStorageRepository = pdfStorageRepository,
+        userRepository = object : UserRepository {
+            override suspend fun login(email: String, password: String) = com.example.challenge_letssign.utils.AppResult.Error("")
+            override suspend fun requestLoginCode(email: String) = com.example.challenge_letssign.utils.AppResult.Error("")
+            override suspend fun verifyLoginCode(email: String, code: String) = com.example.challenge_letssign.utils.AppResult.Error("")
+            override suspend fun getUserById(userId: String) = com.example.challenge_letssign.utils.AppResult.Error("")
+            override suspend fun getUserByEmail(email: String) = com.example.challenge_letssign.utils.AppResult.Success(null)
+            override fun observeSigners() = kotlinx.coroutines.flow.emptyFlow<List<com.example.challenge_letssign.domain.model.User>>()
+            override fun observeUsersByRole(role: com.example.challenge_letssign.domain.model.UserRole) = kotlinx.coroutines.flow.emptyFlow<List<com.example.challenge_letssign.domain.model.User>>()
+            override suspend fun createUser(user: com.example.challenge_letssign.domain.model.User) = com.example.challenge_letssign.utils.AppResult.Success(user)
+            override suspend fun updateUser(user: com.example.challenge_letssign.domain.model.User) = com.example.challenge_letssign.utils.AppResult.Success(user)
+            override suspend fun deleteUser(userId: String) = com.example.challenge_letssign.utils.AppResult.Success(Unit)
+        }
+    )
+
     private val _uiState = MutableStateFlow(DocumentDetailsUiState())
     val uiState: StateFlow<DocumentDetailsUiState> = _uiState.asStateFlow()
 
@@ -365,13 +385,20 @@ class DocumentDetailsViewModel @Inject constructor(
             } ?: _uiState.value.signers.firstOrNull { it.signer.id == actorId }?.signer?.name
             ?: if (actorId == doc.ownerAdminId) "Administrador" else "Signatário"
 
-            if (isCompleted) {
+            if (isCompleted && actorUserId != null) {
                 documentRepository.removeDocumentFromUserList(doc.id, actorId)
-            } else if (doc.status == DocumentStatus.PENDING) {
+            } else if (doc.status == DocumentStatus.PENDING && actorUserId != null) {
                 documentRepository.interruptDocument(doc.id, actorId, actorName, System.currentTimeMillis())
             } else {
+                if (doc.status == DocumentStatus.PENDING) {
+                    documentRepository.interruptDocument(doc.id, actorId, actorName, System.currentTimeMillis())
+                } else if (isCompleted) {
+                    documentRepository.removeDocumentFromUserList(doc.id, actorId)
+                }
                 documentRepository.deleteDocument(doc.id)
-                if (doc.fileName != com.example.challenge_letssign.data.local.seed.DatabaseSeeder.SEED_PDF_FILE_NAME) {
+                if (doc.fileName != com.example.challenge_letssign.data.local.seed.DatabaseSeeder.SEED_PDF_FILE_NAME &&
+                    !doc.fileName.startsWith("seed_")
+                ) {
                     pdfStorageRepository.deletePdfFile(doc.fileName)
                 }
             }

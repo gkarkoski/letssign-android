@@ -121,6 +121,29 @@ class SignerManagementViewModel @Inject constructor(
     private val manageContactGroupUseCase: ManageContactGroupUseCase
 ) : ViewModel() {
 
+    constructor(
+        observeSignersUseCase: ObserveSignersUseCase,
+        saveSignerUseCase: SaveSignerUseCase,
+        deleteSignerUseCase: DeleteSignerUseCase
+    ) : this(
+        observeSignersUseCase = observeSignersUseCase,
+        saveSignerUseCase = saveSignerUseCase,
+        deleteSignerUseCase = deleteSignerUseCase,
+        observeContactGroupsUseCase = ObserveContactGroupsUseCase(NoOpContactGroupRepository),
+        observeContactGroupMembersUseCase = ObserveContactGroupMembersUseCase(NoOpContactGroupRepository),
+        manageContactGroupUseCase = ManageContactGroupUseCase(NoOpContactGroupRepository)
+    )
+
+    private object NoOpContactGroupRepository : com.example.challenge_letssign.domain.repository.ContactGroupRepository {
+        override fun observeGroups() = kotlinx.coroutines.flow.emptyFlow<List<ContactGroup>>()
+        override fun observeGroupMembers(groupId: String) = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+        override suspend fun createGroup(name: String, memberIds: Set<String>) = AppResult.Success(name)
+        override suspend fun addMembers(groupId: String, memberIds: Set<String>) = AppResult.Success(Unit)
+        override suspend fun removeMember(groupId: String, userId: String) = AppResult.Success(Unit)
+        override suspend fun renameGroup(groupId: String, newName: String) = AppResult.Success(Unit)
+        override suspend fun deleteGroup(groupId: String) = AppResult.Success(Unit)
+    }
+
     private val _uiState = MutableStateFlow(SignerManagementUiState())
     val uiState: StateFlow<SignerManagementUiState> = _uiState.asStateFlow()
 
@@ -358,6 +381,7 @@ class SignerManagementViewModel @Inject constructor(
         if (name.isBlank() || memberIds.isEmpty()) return
 
         viewModelScope.launch {
+            saveSignerUseCase.assignGroupToSigners(name, memberIds)
             when (val result = manageContactGroupUseCase.create(name, memberIds)) {
                 is AppResult.Success -> {
                     _uiState.update {

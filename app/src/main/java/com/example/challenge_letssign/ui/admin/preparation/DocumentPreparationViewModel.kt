@@ -138,17 +138,29 @@ data class DocumentPreparationUiState(
     val matchingPickerGroups: List<ContactGroupSummary>
         get() {
             val q = pickerSearchQuery.trim().lowercase()
-
-            return contactGroups
-                .filter { q.isEmpty() || it.name.lowercase().contains(q) }
-                .map { group ->
-                    val members = groupMembersById[group.id].orEmpty()
-
+            if (contactGroups.isNotEmpty()) {
+                return contactGroups
+                    .filter { q.isEmpty() || it.name.lowercase().contains(q) }
+                    .map { group ->
+                        val members = groupMembersById[group.id].orEmpty()
+                        ContactGroupSummary(
+                            groupId = group.id,
+                            groupName = group.name,
+                            members = members,
+                            isFullySelected = group.id in pickerSelectedGroupIds
+                        )
+                    }
+            }
+            if (q.isEmpty()) return emptyList()
+            return availableSigners
+                .filter { it.groupName.isNotBlank() && it.groupName.lowercase().contains(q) }
+                .groupBy { it.groupName }
+                .map { (groupName, members) ->
                     ContactGroupSummary(
-                        groupId = group.id,
-                        groupName = group.name,
+                        groupId = groupName,
+                        groupName = groupName,
                         members = members,
-                        isFullySelected = group.id in pickerSelectedGroupIds
+                        isFullySelected = members.isNotEmpty() && members.all { it.id in pickerSelectedIds }
                     )
                 }
         }
@@ -167,6 +179,45 @@ class DocumentPreparationViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
     private val saveSignerUseCase: SaveSignerUseCase
 ) : ViewModel() {
+
+    constructor(
+        observeSignersUseCase: ObserveSignersUseCase,
+        importPdfUseCase: ImportPdfUseCase,
+        prepareDraftDocumentUseCase: PrepareDraftDocumentUseCase,
+        documentRepository: DocumentRepository,
+        saveSignerUseCase: SaveSignerUseCase = SaveSignerUseCase(NoOpPrepUserRepository)
+    ) : this(
+        observeSignersUseCase = observeSignersUseCase,
+        observeContactGroupsUseCase = ObserveContactGroupsUseCase(NoOpPrepContactGroupRepository),
+        observeContactGroupMembersUseCase = ObserveContactGroupMembersUseCase(NoOpPrepContactGroupRepository),
+        importPdfUseCase = importPdfUseCase,
+        prepareDraftDocumentUseCase = prepareDraftDocumentUseCase,
+        documentRepository = documentRepository,
+        saveSignerUseCase = saveSignerUseCase
+    )
+
+    private object NoOpPrepContactGroupRepository : com.example.challenge_letssign.domain.repository.ContactGroupRepository {
+        override fun observeGroups() = kotlinx.coroutines.flow.emptyFlow<List<ContactGroup>>()
+        override fun observeGroupMembers(groupId: String) = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+        override suspend fun createGroup(name: String, memberIds: Set<String>) = AppResult.Success(name)
+        override suspend fun addMembers(groupId: String, memberIds: Set<String>) = AppResult.Success(Unit)
+        override suspend fun removeMember(groupId: String, userId: String) = AppResult.Success(Unit)
+        override suspend fun renameGroup(groupId: String, newName: String) = AppResult.Success(Unit)
+        override suspend fun deleteGroup(groupId: String) = AppResult.Success(Unit)
+    }
+
+    private object NoOpPrepUserRepository : com.example.challenge_letssign.domain.repository.UserRepository {
+        override suspend fun login(email: String, password: String) = AppResult.Error("")
+        override suspend fun requestLoginCode(email: String) = AppResult.Error("")
+        override suspend fun verifyLoginCode(email: String, code: String) = AppResult.Error("")
+        override suspend fun getUserById(userId: String) = AppResult.Error("")
+        override suspend fun getUserByEmail(email: String) = AppResult.Success(null)
+        override fun observeSigners() = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+        override fun observeUsersByRole(role: com.example.challenge_letssign.domain.model.UserRole) = kotlinx.coroutines.flow.emptyFlow<List<User>>()
+        override suspend fun createUser(user: User) = AppResult.Success(user)
+        override suspend fun updateUser(user: User) = AppResult.Success(user)
+        override suspend fun deleteUser(userId: String) = AppResult.Success(Unit)
+    }
 
 
     private val _uiState = MutableStateFlow(DocumentPreparationUiState())
@@ -418,12 +469,14 @@ class DocumentPreparationViewModel @Inject constructor(
 
     fun onTogglePickerGroupSelection(groupId: String) {
         _uiState.update { state ->
-            val members = state.groupMembersById[groupId].orEmpty()
+            val members = state.groupMembersById[groupId].takeIf { !it.isNullOrEmpty() }
+                ?: state.availableSigners.filter { it.groupName.equals(groupId, ignoreCase = true) }
             val memberIds = members.map { it.id }.toSet()
 
             if (memberIds.isEmpty()) return@update state
 
-            val groupIsSelected = groupId in state.pickerSelectedGroupIds
+            val groupIsSelected = groupId in state.pickerSelectedGroupIds ||
+                memberIds.all { it in state.pickerSelectedIds }
 
             val updatedGroupIds = if (groupIsSelected) {
                 state.pickerSelectedGroupIds - groupId

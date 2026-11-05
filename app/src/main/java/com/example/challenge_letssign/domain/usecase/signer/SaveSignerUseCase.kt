@@ -94,6 +94,9 @@ class SaveSignerUseCase @Inject constructor(
         }
     }
 
+    suspend fun assignGroupToSigners(groupName: String, memberIds: Set<String>): AppResult<Unit> =
+        userRepository.assignGroupToUsers(groupName, memberIds)
+
     companion object {
         const val CPF_ERROR_MESSAGE = "CPF incompleto. Use 11 dígitos."
         const val CNPJ_ERROR_MESSAGE = "CNPJ incompleto. Use 14 dígitos."

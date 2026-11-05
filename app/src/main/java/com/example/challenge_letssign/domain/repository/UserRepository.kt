@@ -17,4 +17,15 @@ interface UserRepository {
     suspend fun updateUser(user: User): AppResult<User>
     suspend fun deleteUser(userId: String): AppResult<Unit>
 
+    suspend fun assignGroupToUsers(groupName: String, userIds: Set<String>): AppResult<Unit> {
+        val trimmedGroup = groupName.trim()
+        if (trimmedGroup.isBlank() || userIds.isEmpty()) {
+            return AppResult.Error("Informe o nome do grupo e selecione ao menos 1 contato.")
+        }
+        for (id in userIds) {
+            val user = getUserById(id).getOrNull() ?: continue
+            updateUser(user.copy(groupName = trimmedGroup))
+        }
+        return AppResult.Success(Unit)
+    }
 }

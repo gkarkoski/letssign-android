@@ -614,14 +614,31 @@ object DatabaseSeeder {
     }
 
     suspend fun seedIfNeeded(
-        database: LetsSignDatabase,
         userDao: UserDao,
         documentDao: DocumentDao? = null,
         signatureFieldDao: SignatureFieldDao? = null,
         filesDir: File? = null,
         appContext: Context? = null
     ) {
-        database.clearAllTables()
+        seedIfNeeded(
+            database = null,
+            userDao = userDao,
+            documentDao = documentDao,
+            signatureFieldDao = signatureFieldDao,
+            filesDir = filesDir,
+            appContext = appContext
+        )
+    }
+
+    suspend fun seedIfNeeded(
+        database: LetsSignDatabase?,
+        userDao: UserDao,
+        documentDao: DocumentDao? = null,
+        signatureFieldDao: SignatureFieldDao? = null,
+        filesDir: File? = null,
+        appContext: Context? = null
+    ) {
+        database?.clearAllTables()
         if (filesDir != null) {
             val seedPdf = ensureSeedPdfFileExists(filesDir)
             // Cria uma cópia independente do PDF modelo para cada documento pré-carregado.

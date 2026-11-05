@@ -249,6 +249,35 @@ class LocalDocumentRepositoryTest {
             docsFlow.value = docsFlow.value.filterNot { it.id == documentId }
         }
 
+        override suspend fun markDocumentInterrupted(
+            documentId: String,
+            userId: String,
+            userName: String,
+            deletedAt: Long
+        ) {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun hideDocumentForUser(documentId: String, userId: String) {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun getDocumentOwnerId(documentId: String): String? {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun getDocumentSignerIds(documentId: String): List<String> {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun getHiddenUserIdsRaw(documentId: String): String? {
+            TODO("Not yet implemented")
+        }
+
+        override suspend fun documentExists(documentId: String): Int {
+            TODO("Not yet implemented")
+        }
+
         override fun observeDocumentSignersWithUsers(documentId: String): Flow<List<DocumentSignerWithUserEntity>> =
             MutableStateFlow(emptyList())
 
