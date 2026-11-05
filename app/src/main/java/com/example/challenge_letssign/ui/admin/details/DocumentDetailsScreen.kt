@@ -47,6 +47,7 @@ import com.example.challenge_letssign.domain.model.DocumentStatus
 import com.example.challenge_letssign.domain.model.SignatureStatus
 import com.example.challenge_letssign.ui.components.CheckIcon
 import com.example.challenge_letssign.ui.components.ClockIcon
+import com.example.challenge_letssign.ui.components.ChevronRightIcon
 import com.example.challenge_letssign.ui.components.DocumentFileIcon
 import com.example.challenge_letssign.ui.components.ErrorCircleIcon
 import com.example.challenge_letssign.ui.components.LetsSignAvatar
@@ -71,6 +72,7 @@ fun DocumentDetailsScreen(
     onDeleted: (String) -> Unit = { onBack() },
     onEditDraftSignersAndFile: (String) -> Unit = {},
     onOpenPositioningOrViewPdf: (String) -> Unit,
+    onViewDocument: (String) -> Unit = onOpenPositioningOrViewPdf,
     onSignDocument: (String) -> Unit = {},
     viewModel: DocumentDetailsViewModel = hiltViewModel()
 ) {
@@ -109,7 +111,12 @@ fun DocumentDetailsScreen(
             onEditDraftSignersAndFile(documentId)
         },
         onOpenPositioningOrViewPdf = {
-            onOpenPositioningOrViewPdf(documentId)
+            // Rascunho abre o posicionamento (edição); documento já enviado abre só a leitura
+            if (uiState.document?.status == DocumentStatus.DRAFT) {
+                onOpenPositioningOrViewPdf(documentId)
+            } else {
+                onViewDocument(documentId)
+            }
         },
         onSignDocument = {
             onSignDocument(documentId)
@@ -580,6 +587,15 @@ fun DocumentDetailsContent(
                                             )
                                         )
                                     }
+                                    // Indica que o card abre o documento para leitura
+                                    Text(
+                                        text = if (doc.status == DocumentStatus.DRAFT) "Editar" else "Ver",
+                                        color = LetsSignColors.Primary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    ChevronRightIcon(color = LetsSignColors.Primary, size = 18.dp)
                                 }
 
                                 Spacer(modifier = Modifier.height(18.dp))

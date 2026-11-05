@@ -23,6 +23,7 @@ import com.example.challenge_letssign.ui.admin.review.DocumentReviewScreen
 import com.example.challenge_letssign.ui.auth.LoginScreen
 import com.example.challenge_letssign.ui.signer.SignerDashboardScreen
 import com.example.challenge_letssign.ui.signer.signing.SignerDocumentSignScreen
+import com.example.challenge_letssign.ui.viewer.DocumentViewerScreen
 
 object LetsSignRoutes {
     const val LOGIN = "login"
@@ -30,6 +31,7 @@ object LetsSignRoutes {
     const val SIGNER_DASHBOARD = "signer_dashboard/{userId}/{userName}"
     const val DOCUMENT_PREPARATION = "document_preparation/{adminId}?documentId={documentId}"
     const val PDF_POSITIONING = "pdf_positioning/{documentId}"
+    const val DOCUMENT_VIEWER = "document_viewer/{documentId}"
     const val DOCUMENT_REVIEW = "document_review/{documentId}"
     const val DOCUMENT_DETAILS ="document_details/{documentId}?signerId={signerId}"
     const val SIGNER_DOCUMENT_SIGN = "signer_document_sign/{documentId}/{signerId}"
@@ -49,6 +51,9 @@ object LetsSignRoutes {
 
     fun pdfPositioning(documentId: String): String =
         "pdf_positioning/${encodeSegment(documentId)}"
+
+    fun documentViewer(documentId: String): String =
+        "document_viewer/${encodeSegment(documentId)}"
 
     fun documentReview(documentId: String): String =
         "document_review/${encodeSegment(documentId)}"
@@ -202,6 +207,17 @@ fun LetsSignNavHost(
             )
         }
 
+        // VER/LER: visualização somente leitura do PDF
+        composable(
+            route = LetsSignRoutes.DOCUMENT_VIEWER,
+            arguments = listOf(navArgument("documentId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            DocumentViewerScreen(
+                documentId = backStackEntry.arguments?.getString("documentId").orEmpty(),
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable(
             route = LetsSignRoutes.PDF_POSITIONING,
             arguments = listOf(
@@ -290,6 +306,9 @@ fun LetsSignNavHost(
                     navController.navigate(
                         LetsSignRoutes.pdfPositioning(docId)
                     )
+                },
+                onViewDocument = { docId ->
+                    navController.navigate(LetsSignRoutes.documentViewer(docId))
                 },
                 onSignDocument = { docId ->
                     if (!signerId.isNullOrBlank()) {
